@@ -85,9 +85,53 @@
   }
   .sidebar-toggle:hover{color:#aaa;background:#1a1a1a}
 
+  /* ── Workspace bar ── */
+  .workspace-bar{
+    margin:14px 14px 0;
+    display:flex;
+    gap:6px;
+    flex-shrink:0;
+    align-items:center;
+  }
+  .workspace-select{
+    flex:1;
+    background:#141414;
+    border:1px solid #1e1e1e;
+    border-radius:8px;
+    padding:7px 10px;
+    color:#ccc;
+    font-size:12px;
+    font-weight:500;
+    outline:none;
+    cursor:pointer;
+    appearance:none;
+    -webkit-appearance:none;
+    min-width:0;
+    transition:border-color .2s;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23444'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 9px center;
+    padding-right:26px;
+  }
+  .workspace-select:focus{border-color:#6366f1}
+  .workspace-select option{background:#1a1a1a;color:#e0e0e0}
+  .new-ws-btn{
+    background:#141414;
+    border:1px solid #2a2a2a;
+    border-radius:8px;
+    padding:7px 10px;
+    color:#555;
+    font-size:16px;
+    cursor:pointer;
+    transition:all .15s;
+    flex-shrink:0;
+    line-height:1;
+  }
+  .new-ws-btn:hover{border-color:#6366f1;color:#6366f1}
+
   /* Upload zone at top */
   .upload-zone{
-    margin:14px 14px 0;
+    margin:10px 14px 0;
     border:2px dashed #1e1e1e;
     border-radius:10px;
     padding:18px 12px;
@@ -198,6 +242,46 @@
   /* Section divider */
   .section-divider{height:1px;background:#161616;margin:2px 0}
 
+  /* ── Sidebar footer (model picker) ── */
+  .sidebar-footer{
+    border-top:1px solid #161616;
+    padding:12px 14px;
+    flex-shrink:0;
+  }
+  .setting-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .setting-label{
+    font-size:10px;
+    font-weight:600;
+    color:#2e2e2e;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    flex-shrink:0;
+  }
+  .model-select{
+    flex:1;
+    background:#141414;
+    border:1px solid #1e1e1e;
+    border-radius:7px;
+    padding:6px 26px 6px 10px;
+    color:#666;
+    font-size:12px;
+    outline:none;
+    cursor:pointer;
+    appearance:none;
+    -webkit-appearance:none;
+    min-width:0;
+    transition:border-color .2s, color .2s;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23444'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 9px center;
+  }
+  .model-select:focus{border-color:#6366f1;color:#ccc}
+  .model-select option{background:#1a1a1a;color:#e0e0e0}
+
   /* ── Chat area ── */
   .chat{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0f0f0f}
   .msgs{flex:1;overflow-y:auto;padding:28px 32px;display:flex;flex-direction:column;gap:18px}
@@ -269,7 +353,6 @@
 
   /* ── Mobile ─────────────────────────────────────────────── */
   @media (max-width: 640px) {
-    /* Sidebar hidden by default on mobile — user taps ☰ to open */
     .sidebar{
       position:fixed;
       top:0;left:0;bottom:0;
@@ -283,7 +366,6 @@
       transform:translateX(0);
       opacity:1;
     }
-    /* Overlay behind sidebar */
     .sidebar-overlay{
       display:none;
       position:fixed;inset:0;
@@ -291,20 +373,15 @@
       z-index:49;
     }
     .sidebar-overlay.show{display:block}
-    /* Chat takes full width */
     .chat{width:100%}
-    /* Bigger tap targets */
-    .bar input{font-size:16px;padding:13px 14px} /* prevents iOS zoom */
+    .bar input{font-size:16px;padding:13px 14px}
     .bar button{padding:13px 16px}
     .mode-btn{padding:13px 12px;font-size:12px}
-    /* Messages narrower max-width */
     .msg-user{max-width:85%}
     .msg-bot{max-width:90%}
     .msgs{padding:16px 14px;gap:14px}
-    /* Header compact */
     header{padding:10px 14px}
     .tagline{display:none}
-    /* Toast above keyboard */
     .toast{bottom:90px}
   }
 </style>
@@ -379,6 +456,14 @@
   <!-- Left Panel -->
   <div class="sidebar">
 
+    <!-- Workspace switcher -->
+    <div class="workspace-bar">
+      <select id="workspace-select" class="workspace-select" title="Switch workspace">
+        <option value="Default">Default</option>
+      </select>
+      <button class="new-ws-btn" id="new-ws-btn" title="New workspace">+</button>
+    </div>
+
     <!-- Drop zone -->
     <div class="upload-zone" id="zone">
       <div class="ico">📂</div>
@@ -420,6 +505,22 @@
       </div>
 
     </div>
+
+    <!-- Sidebar footer: model picker -->
+    <div class="sidebar-footer">
+      <div class="setting-row">
+        <span class="setting-label">Model</span>
+        <select id="model-select" class="model-select" title="Select language model">
+          <option value="mistral">Mistral 7B</option>
+          <option value="llama3.2">Llama 3.2</option>
+          <option value="phi3">Phi-3 Mini</option>
+          <option value="gemma2">Gemma 2</option>
+          <option value="qwen2.5">Qwen 2.5</option>
+          <option value="deepseek-r1">DeepSeek R1</option>
+        </select>
+      </div>
+    </div>
+
   </div>
 
   <!-- Chat -->
@@ -443,13 +544,34 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const API     = 'http://localhost:8000';
+const API = 'http://localhost:8000';
 
-// ── Sidebar toggle — desktop collapse / mobile slide-in ──────
-const sidebar        = document.querySelector('.sidebar');
-const sidebarToggle  = document.getElementById('sidebar-toggle');
-const sidebarOverlay = document.getElementById('sidebar-overlay');
-const isMobile       = () => window.innerWidth <= 640;
+// ── State ─────────────────────────────────────────────────────
+let currentWorkspace = 'Default';
+let currentModel     = 'mistral';
+let history          = [];
+let busy             = false;
+let agentMode        = false;
+let docCount         = 0;
+let webCount         = 0;
+
+// ── DOM refs ──────────────────────────────────────────────────
+const sidebar         = document.querySelector('.sidebar');
+const sidebarToggle   = document.getElementById('sidebar-toggle');
+const sidebarOverlay  = document.getElementById('sidebar-overlay');
+const msgsEl          = document.getElementById('msgs');
+const qEl             = document.getElementById('q');
+const sendBtn         = document.getElementById('send');
+const zoneEl          = document.getElementById('zone');
+const fileInp         = document.getElementById('file-input');
+const hstatus         = document.getElementById('hstatus');
+const wsSelect        = document.getElementById('workspace-select');
+const newWsBtn        = document.getElementById('new-ws-btn');
+const modelSelect     = document.getElementById('model-select');
+const modeBtn         = document.getElementById('mode-btn');
+
+// ── Sidebar toggle ────────────────────────────────────────────
+const isMobile = () => window.innerWidth <= 640;
 
 function openSidebar() {
   if (isMobile()) {
@@ -472,33 +594,74 @@ function closeSidebar() {
   }
 }
 sidebarToggle.onclick = () => {
-  const mobileOpen   = sidebar.classList.contains('mobile-open');
-  const desktopOpen  = !sidebar.classList.contains('collapsed');
+  const mobileOpen  = sidebar.classList.contains('mobile-open');
+  const desktopOpen = !sidebar.classList.contains('collapsed');
   if (isMobile()) { mobileOpen  ? closeSidebar() : openSidebar(); }
   else            { desktopOpen ? closeSidebar() : openSidebar(); }
 };
 sidebarOverlay.onclick = closeSidebar;
-
-// Auto-close sidebar when a message is sent on mobile
 function closeSidebarOnMobile() { if (isMobile()) closeSidebar(); }
-const msgsEl  = document.getElementById('msgs');
-const qEl     = document.getElementById('q');
-const sendBtn = document.getElementById('send');
-const zoneEl  = document.getElementById('zone');
-const fileInp = document.getElementById('file-input');
-const hstatus = document.getElementById('hstatus');
 
-let history   = [];
-let busy      = false;
-let agentMode = false;
-let docCount  = 0;
-let webCount  = 0;
+// ── Workspace switcher ────────────────────────────────────────
+async function loadWorkspaces() {
+  try {
+    const d = await fetch(`${API}/workspaces`).then(r => r.json());
+    wsSelect.innerHTML = '';
+    d.workspaces.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      if (name === currentWorkspace) opt.selected = true;
+      wsSelect.appendChild(opt);
+    });
+  } catch {}
+}
+
+wsSelect.onchange = () => {
+  currentWorkspace = wsSelect.value;
+  history = [];
+  clearFilesList();
+  loadFiles();
+  ping();
+};
+
+newWsBtn.onclick = () => {
+  const name = prompt('New workspace name (e.g. Work, Health, Finance):');
+  if (!name || !name.trim()) return;
+  const trimmed = name.trim();
+  fetch(`${API}/workspaces`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: trimmed })
+  }).then(r => r.json()).then(d => {
+    if (d.error) { toast(`❌ ${d.error}`, true); return; }
+    // Add to dropdown and select it
+    const opt = document.createElement('option');
+    opt.value = trimmed; opt.textContent = trimmed;
+    wsSelect.appendChild(opt);
+    wsSelect.value = trimmed;
+    currentWorkspace = trimmed;
+    history = [];
+    clearFilesList();
+    toast(`✅ Workspace "${trimmed}" created`);
+    ping();
+  }).catch(() => toast('❌ Could not create workspace', true));
+};
+
+function clearFilesList() {
+  docCount = 0; webCount = 0;
+  document.getElementById('docs-count').textContent = '0';
+  document.getElementById('web-count').textContent  = '0';
+  document.getElementById('docs-list').innerHTML = '<div class="section-empty" id="docs-empty">No documents indexed yet</div>';
+  document.getElementById('web-list').innerHTML  = '<div class="section-empty" id="web-empty">No URLs indexed yet</div>';
+}
+
+// ── Model picker ──────────────────────────────────────────────
+modelSelect.onchange = () => { currentModel = modelSelect.value; };
 
 // ── Mode toggle ───────────────────────────────────────────────
-const modeBtn = document.getElementById('mode-btn');
 modeBtn.onclick = () => {
   agentMode = !agentMode;
-  modeBtn.className = agentMode ? 'mode-btn agent' : 'mode-btn';
+  modeBtn.className   = agentMode ? 'mode-btn agent' : 'mode-btn';
   modeBtn.textContent = agentMode ? '🌐 Agent' : '🔒 Vault';
   modeBtn.title = agentMode
     ? 'Agent mode ON — answers from your vault + live web search'
@@ -508,18 +671,18 @@ modeBtn.onclick = () => {
     : 'Ask anything about your documents…';
 };
 
-// ── Setup Wizard ─────────────────────────────────────────────
+// ── Setup Wizard ──────────────────────────────────────────────
 function setStep(id, state, text) {
   const el  = document.getElementById(id);
   const sts = document.getElementById(id + '-status');
-  el.className  = 'step ' + (state === 'done' ? 'done' : state === 'active' ? 'active' : '');
+  el.className    = 'step ' + (state === 'done' ? 'done' : state === 'active' ? 'active' : '');
   sts.textContent = text;
 }
 
 async function checkSetup() {
   try {
     const health = await fetch(`${API}/health`, { signal: AbortSignal.timeout(3000) }).then(r => r.json());
-    setStep('s-backend', 'done', '✓ Running');
+    setStep('s-backend', 'done',   '✓ Running');
     setStep('s-ollama',  health.ollama      ? 'done' : 'active', health.ollama      ? '✓ Ready' : '✗ Not found');
     setStep('s-embed',   health.embed_model ? 'done' : 'active', health.embed_model ? '✓ Ready' : '✗ Missing');
     setStep('s-llm',     health.chat_model  ? 'done' : 'active', health.chat_model  ? '✓ Ready' : '✗ Missing');
@@ -546,18 +709,19 @@ async function checkSetup() {
 
 function launchApp() {
   document.getElementById('setup-screen').style.display = 'none';
-  ping(); loadFiles();
+  ping(); loadWorkspaces(); loadFiles();
 }
 
 checkSetup();
 
-// ── Status ping ──────────────────────────────────────────────
+// ── Status ping ───────────────────────────────────────────────
 async function ping() {
   try {
-    const d = await fetch(`${API}/status`).then(r => r.json());
+    const d = await fetch(`${API}/status?workspace=${encodeURIComponent(currentWorkspace)}`).then(r => r.json());
     hstatus.className = 'hstatus ok';
+    const ws = currentWorkspace === 'Default' ? '' : ` · ${currentWorkspace}`;
     hstatus.querySelector('.stext').textContent =
-      d.chunks_indexed === 0 ? 'Running — no docs yet' : `${d.chunks_indexed} chunks indexed`;
+      d.chunks_indexed === 0 ? `Running${ws} — no docs yet` : `${d.chunks_indexed} chunks${ws}`;
     qEl.disabled = sendBtn.disabled = false;
   } catch {
     hstatus.className = 'hstatus warn';
@@ -566,15 +730,15 @@ async function ping() {
   }
 }
 
-// ── Load existing files ──────────────────────────────────────
+// ── Load existing files ───────────────────────────────────────
 async function loadFiles() {
   try {
-    const d = await fetch(`${API}/files`).then(r => r.json());
+    const d = await fetch(`${API}/files?workspace=${encodeURIComponent(currentWorkspace)}`).then(r => r.json());
     d.files.forEach(f => addFileCard(f.name, f.chunks));
   } catch {}
 }
 
-// ── File / URL ingestion ─────────────────────────────────────
+// ── File / URL ingestion ──────────────────────────────────────
 const ACCEPTED = ['.pdf','.docx','.txt','.md','.csv'];
 
 zoneEl.onclick    = () => fileInp.click();
@@ -600,7 +764,7 @@ async function ingestUrl() {
     const d = await fetch(`${API}/ingest-url`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, workspace: currentWorkspace })
     }).then(r => r.json());
     if (d.error) throw new Error(d.error);
     addFileCard(d.source, d.chunks);
@@ -614,8 +778,10 @@ async function ingest(files) {
   for (const f of files) {
     toast(`Indexing ${f.name}…`);
     try {
-      const fd = new FormData(); fd.append('file', f);
-      const d  = await fetch(`${API}/upload`, { method: 'POST', body: fd }).then(r => r.json());
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('workspace', currentWorkspace);
+      const d = await fetch(`${API}/upload`, { method: 'POST', body: fd }).then(r => r.json());
       if (d.error) throw new Error(d.error);
       addFileCard(f.name, d.chunks);
       toast(`✅ ${f.name} — ${d.chunks} chunks`);
@@ -624,7 +790,7 @@ async function ingest(files) {
   }
 }
 
-// ── Add file card to correct section ────────────────────────
+// ── Add file card to correct section ─────────────────────────
 function isWebSource(name) {
   return name.startsWith('🌐') || name.startsWith('http://') || name.startsWith('https://');
 }
@@ -652,19 +818,17 @@ function addFileCard(name, chunks) {
   const safeId = 'fc-' + btoa(encodeURIComponent(name)).replace(/[^a-zA-Z0-9]/g,'');
   if (document.getElementById(safeId)) return;
 
-  const isWeb = isWebSource(name);
+  const isWeb   = isWebSource(name);
   const listEl  = document.getElementById(isWeb ? 'web-list'  : 'docs-list');
   const emptyEl = document.getElementById(isWeb ? 'web-empty' : 'docs-empty');
 
-  // Remove empty placeholder
   if (emptyEl) emptyEl.remove();
 
-  // Update count
   if (isWeb) { webCount++; updateCount('web', webCount); }
   else        { docCount++; updateCount('docs', docCount); }
 
-  const icon  = fileIcon(name);
-  const label = friendlyName(name);
+  const icon       = fileIcon(name);
+  const label      = friendlyName(name);
   const chunkLabel = chunks === 1 ? '1 chunk' : `${chunks} chunks`;
 
   const el = document.createElement('div');
@@ -683,10 +847,9 @@ async function deleteFile(encodedName, safeId, section) {
   const name = decodeURIComponent(encodedName);
   if (!confirm(`Remove "${name}" from the index?`)) return;
   try {
-    const d = await fetch(`${API}/files/${encodedName}`, { method: 'DELETE' }).then(r => r.json());
+    const d = await fetch(`${API}/files/${encodedName}?workspace=${encodeURIComponent(currentWorkspace)}`, { method: 'DELETE' }).then(r => r.json());
     if (d.error) throw new Error(d.error);
     document.getElementById(safeId)?.remove();
-    // Update count
     if (section === 'web') {
       webCount = Math.max(0, webCount - 1); updateCount('web', webCount);
       if (webCount === 0) {
@@ -708,7 +871,7 @@ async function deleteFile(encodedName, safeId, section) {
   } catch(e) { toast(`❌ ${e.message}`, true); }
 }
 
-// ── Chat ─────────────────────────────────────────────────────
+// ── Chat ──────────────────────────────────────────────────────
 sendBtn.onclick = ask;
 qEl.onkeydown   = e => { if (e.key === 'Enter' && !e.shiftKey && !busy) ask(); };
 
@@ -740,7 +903,12 @@ async function ask() {
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history })
+      body: JSON.stringify({
+        message:   text,
+        history,
+        workspace: currentWorkspace,
+        model:     currentModel
+      })
     });
     const reader = res.body.getReader();
     const dec    = new TextDecoder();
@@ -788,16 +956,16 @@ async function ask() {
   qEl.focus(); msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 
-// ── Strip markdown from model output ────────────────────────
+// ── Strip markdown from model output ─────────────────────────
 function stripMarkdown(text) {
   return text
-    .replace(/\*\*(.+?)\*\*/g, '$1')        // **bold** → plain
-    .replace(/\*(.+?)\*/g, '$1')            // *italic* → plain
-    .replace(/^#{1,6}\s+/gm, '')            // ## headers → plain
-    .replace(/^[\-\*]\s+/gm, '• ')          // - bullet → bullet dot
-    .replace(/^(\d+)\.\s+/gm, '$1. ')       // numbered lists stay
-    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1') // `code` → plain
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [link](url) → link text
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[\-\*]\s+/gm, '• ')
+    .replace(/^(\d+)\.\s+/gm, '$1. ')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .trim();
 }
 
