@@ -1,6 +1,6 @@
 # VaultMind Launch Content
 
-Post these Thursday morning, 8-10am EST for best HN traction.
+Today is Wednesday March 4. Post HN between 8-10am EST for best traction.
 
 ---
 
@@ -8,28 +8,41 @@ Post these Thursday morning, 8-10am EST for best HN traction.
 
 **Title:**
 ```
-Show HN: VaultMind – chat with your local documents using Ollama, no cloud
+Show HN: VaultMind – chat with your documents and the web using local LLMs, no cloud
 ```
 
-**Comment to post immediately after (your first comment):**
+**First comment (post immediately after the submission):**
 ```
-Built this over a couple of days as part of the AIR Blackbox ecosystem
-(https://airblackbox.ai). Same core thesis: AI that stays on your machine.
+Built this over a few days. The core idea: you have files you'd never
+upload to ChatGPT — contracts, financial docs, personal notes, work SOPs.
+But you still want to ask questions about them in plain English.
 
-Stack is straightforward — FastAPI backend, ChromaDB for vector search,
-nomic-embed-text for embeddings, llama3.2 for inference. All running
-locally via Ollama. The UI is a single HTML file.
+Stack: FastAPI + ChromaDB + Ollama (mistral + nomic-embed-text).
+The entire UI is a single HTML file. Nothing touches a server.
 
-Drop in a PDF, ask questions, get streamed answers. Conversation memory
-works across follow-ups. File management built in.
+What it does:
+- Ingest PDFs, Word docs, TXT, Markdown, CSV files
+- Ingest URLs (scrapes and indexes the content locally)
+- Chat with your indexed docs — streamed answers, conversation memory
+- Agent mode: searches your vault AND DuckDuckGo simultaneously,
+  synthesizes both into one answer
 
-It's early and rough around the edges. Happy to answer questions about
-the RAG pipeline or the architecture decisions.
+The relevance filtering was the interesting part to get right. ChromaDB
+returns distance scores — if nothing in the vault is close enough to the
+query, we skip vault context entirely and go straight to web search.
+Stops the model from hallucinating connections between unrelated docs.
 
-What I'm building next: .txt/.md/.docx support, Gmail Takeout import,
-and eventually a one-command Docker setup so anyone can run it.
+Setup wizard handles Ollama install checks, model pulls, and backend
+health before letting you in. One-command launcher: bash start.sh
 
-Repo: https://github.com/air-blackbox/vaultmind
+It's early. The scraper gets blocked by LinkedIn, Indeed, Glassdoor
+(expected). Works well with Greenhouse, Lever, Wellfound, and most
+static content sites.
+
+Part of the AIR Blackbox ecosystem (airblackbox.ai) — same local-first
+philosophy as the EU AI Act compliance scanner.
+
+Repo: https://github.com/airblackbox/VaultMind
 ```
 
 ---
@@ -38,52 +51,53 @@ Repo: https://github.com/air-blackbox/vaultmind
 
 ```
 1/
-Your documents contain things you'd never upload to ChatGPT.
+Your documents have things you'd never paste into ChatGPT.
 
-Medical records. Contracts. Tax returns. Personal notes.
+Contracts. SOPs. Medical records. Personal notes. Company data.
 
-I built VaultMind — a local RAG system that lets you chat with your
-documents using Ollama. Nothing leaves your machine.
+I built VaultMind — chat with your files and the live web using
+local LLMs. Zero cloud. Runs on your Mac in 5 minutes.
 
-Here's how it works:
+Here's what I shipped:
 
 2/
-Stack:
+The stack is boring on purpose:
 - FastAPI backend
-- ChromaDB for vector search
-- nomic-embed-text for local embeddings
-- llama3.2 for inference
-- Single HTML file for the UI
+- ChromaDB (vector store, persists on disk)
+- nomic-embed-text for embeddings
+- mistral for inference
+- UI is a single HTML file
 
-Clone it, pull the models, run uvicorn. That's it.
+All running locally via Ollama. Nothing leaves your machine.
 
 3/
-The RAG pipeline:
+Two modes:
 
-PDF → pypdf → 150-word chunks with overlap
-→ nomic-embed-text embeds each chunk
-→ stored in ChromaDB on disk
+Vault mode: answers come only from your indexed docs.
+Ask "what are the payment terms in this contract?" and it
+cites the actual source.
 
-Query → embed the question → similarity search
-→ top 6 chunks as context → llama3.2 streams the answer
+Agent mode: searches your vault + DuckDuckGo simultaneously.
+Synthesizes both into one answer. Real-time status as it works.
 
 4/
-Conversation memory works across follow-ups.
-Answers stream token by token.
-Files can be added or removed from the index anytime.
-ChromaDB persists between restarts.
+The part that took the most work: relevance filtering.
 
-It's rough but it works.
+ChromaDB returns distance scores. If nothing in your vault
+is close enough to the query, we skip the vault entirely.
+
+"Recap the news today" goes straight to web search.
+"What's our website CTR?" hits your indexed docs.
 
 5/
-Part of the AIR Blackbox ecosystem.
+Supports PDF, Word, TXT, Markdown, CSV, and URLs.
+Paste a job board URL, a competitor's page, a news article —
+it gets scraped, chunked, embedded, and indexed locally.
 
-Same philosophy as the compliance scanner:
-your data stays on your hardware.
+Setup wizard walks you through everything.
+One command: bash start.sh
 
-Apache 2.0. PRs welcome.
-
-→ https://github.com/air-blackbox/vaultmind
+Apache 2.0. github.com/airblackbox/VaultMind
 ```
 
 ---
@@ -91,35 +105,66 @@ Apache 2.0. PRs welcome.
 ## LinkedIn
 
 ```
-Shipped VaultMind this week — a local document AI that runs entirely on your machine.
+Shipped VaultMind this week — a private document AI that runs
+entirely on your machine.
 
-The idea is simple: you have documents you'd never upload to ChatGPT. Medical records, contracts, financial statements, personal notes. But you still want to be able to ask questions about them in plain English.
+The pitch is simple: you have files you'd never upload to ChatGPT.
+Contracts, financial statements, SOPs, medical records, client notes.
+VaultMind lets you chat with those files in plain English — with zero
+data leaving your computer.
 
-VaultMind indexes your PDFs locally using ChromaDB for vector search and Ollama for embeddings and inference. The whole thing runs on localhost. Nothing hits a server.
+Drop in a PDF, paste a URL, or drag in a CSV. It chunks and indexes
+everything locally using ChromaDB and Ollama. Ask questions, get
+streamed answers backed by your actual source documents.
 
-Ask "what were my blood pressure readings last March?" or "what are the payment terms in this contract?" and get a streamed answer backed by the actual source documents.
+Agent mode goes further — it searches your private vault and the live
+web simultaneously, then synthesizes both into one answer. The
+relevance filtering skips vault context automatically when your docs
+aren't related to the query.
 
-It's early — PDFs only, no mobile app, no hardware bundle yet. But the core pipeline works and it's open source.
+It's early. Works well for knowledge bases, recruiting research, SOPs,
+and any situation where you want a private AI that knows your stuff.
 
-Part of the AIR Blackbox project (airblackbox.ai). Same local-first philosophy.
+Built as part of the AIR Blackbox ecosystem (airblackbox.ai).
+Same local-first philosophy as the EU AI Act compliance scanner.
 
-Repo in the comments.
+Open source, Apache 2.0. Repo in the comments.
 
-#OpenSource #LocalAI #Privacy #RAG #Ollama
+#OpenSource #LocalAI #RAG #Privacy #Ollama
 ```
 
 ---
 
-## Reddit Posts
+## Reddit
 
 **r/LocalLLaMA title:**
 ```
-Built a local RAG system for personal documents — Ollama + ChromaDB + FastAPI, zero cloud
+Built a local RAG system that searches your docs + the web —
+Ollama + ChromaDB + FastAPI, relevance filtering to avoid hallucination
 ```
 
 **r/selfhosted title:**
 ```
-VaultMind – chat with your documents using local LLMs (no cloud, no accounts, single HTML UI)
+VaultMind – chat with your local documents and live web using Ollama.
+Single HTML UI, bash start.sh launcher, zero cloud.
 ```
 
-Both posts: link to GitHub, paste the Quick Start section, mention it's Apache 2.0.
+**Body for both:**
+```
+Built this over a few days. Quick start:
+
+git clone https://github.com/airblackbox/VaultMind
+cd VaultMind
+bash start.sh
+
+That's it. The script handles Ollama, model pulls (nomic-embed-text +
+mistral), Python deps, and opens the UI.
+
+Supports: PDF, DOCX, TXT, MD, CSV, and URL scraping.
+
+Two modes:
+- Vault: answers from your indexed docs only
+- Agent: vault + DuckDuckGo, relevance-filtered
+
+Apache 2.0. Happy to answer questions about the RAG pipeline.
+```
