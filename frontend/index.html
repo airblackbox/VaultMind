@@ -871,8 +871,6 @@ function updateQuickActions(gmailConnected) {
 
   const chips = [
     { label: '📧 Summarize Inbox', action: () => summarizeInbox() },
-    { label: '🔴 Action items only', action: () => { qEl.value = 'What emails need action from me today?'; qEl.focus(); } },
-    { label: '📋 Any interviews?', action: () => { qEl.value = 'Do I have any job applications or interviews in my emails?'; qEl.focus(); } },
   ];
   chips.forEach(c => {
     const btn = document.createElement('button');
