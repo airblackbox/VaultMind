@@ -34,14 +34,20 @@ except ImportError:
     print("⚠️  Google auth not installed. Run: pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client")
 
 # ── Config / Feed file paths ──────────────────────────────────
-BASE_DIR         = os.path.dirname(__file__)
-CONFIG_FILE      = os.path.join(BASE_DIR, "connector_config.json")
-FEED_FILE        = os.path.join(BASE_DIR, "feed_events.json")
+BASE_DIR = os.path.dirname(__file__)
+
+# DATA_DIR is configurable so the Electron app can point it at
+# ~/Library/Application Support/VaultMind/data instead of the app bundle.
+DATA_DIR         = os.environ.get("VAULTMIND_DATA_DIR", BASE_DIR)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+CONFIG_FILE      = os.path.join(DATA_DIR, "connector_config.json")
+FEED_FILE        = os.path.join(DATA_DIR, "feed_events.json")
 
 # ── Gmail paths ───────────────────────────────────────────────
 GMAIL_SCOPES     = ['https://www.googleapis.com/auth/gmail.readonly']
-GMAIL_TOKEN_FILE = os.path.join(BASE_DIR, "gmail_token.json")
-GMAIL_CREDS_FILE = os.path.join(BASE_DIR, "gmail_credentials.json")
+GMAIL_TOKEN_FILE = os.path.join(DATA_DIR, "gmail_token.json")
+GMAIL_CREDS_FILE = os.path.join(DATA_DIR, "gmail_credentials.json")
 
 # ── Connector config helpers ──────────────────────────────────
 
@@ -336,7 +342,7 @@ async def serve_manifest():
     return {}
 
 # ── ChromaDB ──────────────────────────────────────────────────
-chroma = chromadb.PersistentClient(path="./chroma_db")
+chroma = chromadb.PersistentClient(path=os.path.join(DATA_DIR, "chroma_db"))
 
 EMBED_MODEL   = "nomic-embed-text"
 DEFAULT_MODEL = "mistral"
@@ -529,9 +535,7 @@ async def save_connector(data: ConnectorConfig):
         "poll_interval_minutes": data.poll_interval_minutes,
     })
     save_config(cfg)
-    # Ensure workspace collection exists
-    if data.workspace:
-        get_collection(data.workspace)
+    get_collection()  # ensure the vault collection exists
     return {"message": f"{data.connector} connector saved"}
 
 @app.post("/connectors/{connector}/sync")
@@ -578,10 +582,9 @@ async def configure_gmail(data: GmailOAuthConfig):
         json.dump(creds_data, f)
     cfg = load_config()
     cfg["gmail"] = cfg.get("gmail", {})
-    cfg["gmail"]["workspace"]             = data.workspace
     cfg["gmail"]["poll_interval_minutes"] = data.poll_interval_minutes
     save_config(cfg)
-    get_collection(data.workspace)
+    get_collection()  # ensure vault collection exists
     return {"message": "Gmail credentials saved"}
 
 @app.get("/auth/gmail")
@@ -930,7 +933,7 @@ def smart_scrape(url: str, max_chars: int = 2000) -> str:
 
 @app.post("/agent")
 async def agent(msg: ChatMessage):
-    col        = get_collection(msg.workspace)
+    col        = get_collection()
     chat_model = msg.model or DEFAULT_MODEL
 
     def generate():

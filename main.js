@@ -1,0 +1,330 @@
+/**
+ * VaultMind — Electron Main Process
+ *
+ * What this file does:
+ *  1. On first launch: finds Python 3, creates a virtualenv, installs deps
+ *  2. Spawns the FastAPI backend (uvicorn) as a child process
+ *  3. Waits for the backend to be ready
+ *  4. Opens the app in a native Mac window (BrowserWindow → localhost:8000)
+ *  5. Cleans up the backend process when the app quits
+ */
+
+const { app, BrowserWindow, dialog, shell } = require('electron');
+const { spawn, execSync }                    = require('child_process');
+const path                                   = require('path');
+const http                                   = require('http');
+const fs                                     = require('fs');
+
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const PORT        = 8000;
+const BACKEND_DIR = path.join(__dirname, 'backend');
+
+// User data dir: ~/Library/Application Support/VaultMind  (persists across app updates)
+const DATA_DIR    = path.join(app.getPath('userData'), 'data');
+
+// Python virtual environment lives in user data so it also survives app updates
+const VENV_DIR    = path.join(app.getPath('userData'), 'venv');
+const VENV_PYTHON = path.join(VENV_DIR, 'bin', 'python3');
+const VENV_PIP    = path.join(VENV_DIR, 'bin', 'pip3');
+
+// ── State ────────────────────────────────────────────────────────────────────
+
+let mainWindow    = null;
+let loadingWindow = null;
+let backendProc   = null;
+
+// ── Python detection ─────────────────────────────────────────────────────────
+
+/**
+ * Try common Python 3 locations on macOS.
+ * Returns the path to python3 if found, or null.
+ */
+function findPython() {
+  const candidates = [
+    '/opt/homebrew/bin/python3',  // Apple Silicon Homebrew
+    '/usr/local/bin/python3',     // Intel Homebrew
+    '/usr/bin/python3',           // Xcode Command Line Tools
+    'python3',                    // PATH fallback
+  ];
+  for (const p of candidates) {
+    try {
+      execSync(`"${p}" --version 2>&1`, { stdio: 'ignore' });
+      return p;
+    } catch (_) { /* try next */ }
+  }
+  return null;
+}
+
+// ── Backend health check ─────────────────────────────────────────────────────
+
+/**
+ * Polls GET /health every second until the backend responds 200,
+ * or rejects after `maxRetries` attempts.
+ */
+function waitForBackend(maxRetries = 45) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+
+    const check = () => {
+      const req = http.get(`http://127.0.0.1:${PORT}/health`, (res) => {
+        res.resume(); // discard body
+        if (res.statusCode === 200) return resolve();
+        retry();
+      });
+      req.setTimeout(1500);
+      req.on('error',   retry);
+      req.on('timeout', () => { req.destroy(); retry(); });
+    };
+
+    const retry = () => {
+      attempts++;
+      if (attempts >= maxRetries) {
+        reject(new Error('VaultMind backend took too long to start.\n\nCheck that Ollama is installed: https://ollama.ai/download'));
+      } else {
+        setTimeout(check, 1000);
+      }
+    };
+
+    setTimeout(check, 800); // small initial delay
+  });
+}
+
+// ── Loading window ───────────────────────────────────────────────────────────
+
+/** Shows a minimal splash screen while we set up / start the backend. */
+function showLoadingWindow() {
+  loadingWindow = new BrowserWindow({
+    width:     380,
+    height:    220,
+    frame:     false,
+    resizable: false,
+    center:    true,
+    alwaysOnTop: true,
+    backgroundColor: '#0f0f0f',
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+
+  const html = `<!DOCTYPE html><html><head>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background:#0f0f0f; color:#e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; height:100vh; gap:14px;
+    -webkit-app-region: drag;
+  }
+  .icon  { font-size:40px; }
+  .title { font-size:18px; font-weight:700; color:#fff; }
+  .msg   { font-size:12px; color:#555; min-height:16px; }
+  .track { width:200px; height:2px; background:#1a1a1a; border-radius:2px; overflow:hidden; }
+  .bar   { height:100%; background:#6366f1; width:10%; border-radius:2px; transition:width .5s ease; }
+</style></head><body>
+  <div class="icon">🔒</div>
+  <div class="title">VaultMind</div>
+  <div class="msg" id="msg">Starting up…</div>
+  <div class="track"><div class="bar" id="bar"></div></div>
+</body></html>`;
+
+  loadingWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+/** Update the splash message and progress bar. */
+function setLoadingStatus(msg, pct) {
+  if (!loadingWindow || loadingWindow.isDestroyed()) return;
+  loadingWindow.webContents.executeJavaScript(`
+    document.getElementById('msg').textContent = ${JSON.stringify(msg)};
+    document.getElementById('bar').style.width = '${Math.min(100, pct)}%';
+  `).catch(() => {});
+}
+
+// ── First-run setup ──────────────────────────────────────────────────────────
+
+/** Runs a shell command and returns a promise. */
+function run(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args, { stdio: 'pipe', ...opts });
+    let stderr = '';
+    if (proc.stderr) proc.stderr.on('data', d => { stderr += d.toString(); });
+    proc.on('close', code => {
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} failed:\n${stderr.slice(-600)}`));
+    });
+    proc.on('error', err => reject(new Error(`Could not run ${cmd}: ${err.message}`)));
+  });
+}
+
+/**
+ * Creates a Python venv and installs requirements if one doesn't exist yet.
+ * Only runs on first launch — subsequent launches skip straight to backend start.
+ */
+async function ensureVenv(python) {
+  if (fs.existsSync(VENV_PYTHON)) return; // already set up
+
+  setLoadingStatus('First time setup — this takes about a minute…', 15);
+
+  // Create the virtual environment
+  try {
+    await run(python, ['-m', 'venv', VENV_DIR]);
+  } catch (err) {
+    throw new Error(
+      `Could not create Python environment.\n\n${err.message}\n\n` +
+      'Make sure Python 3.10+ is installed: https://www.python.org/downloads/'
+    );
+  }
+
+  setLoadingStatus('Installing Python dependencies…', 35);
+
+  // Install requirements into the venv
+  try {
+    await run(VENV_PIP, [
+      'install', '-r', path.join(BACKEND_DIR, 'requirements.txt'), '--quiet'
+    ]);
+  } catch (err) {
+    // Clean up broken venv so next launch tries again
+    try { fs.rmSync(VENV_DIR, { recursive: true, force: true }); } catch (_) {}
+    throw new Error(`Failed to install dependencies:\n\n${err.message}`);
+  }
+}
+
+// ── Backend ──────────────────────────────────────────────────────────────────
+
+/** Spawns the FastAPI backend as a child process. */
+function startBackend() {
+  // Ensure the user data directory exists
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+  backendProc = spawn(
+    VENV_PYTHON,
+    ['-m', 'uvicorn', 'main:app',
+     '--host', '127.0.0.1',
+     '--port', String(PORT),
+     '--log-level', 'warning'],
+    {
+      cwd: BACKEND_DIR,
+      env: {
+        ...process.env,
+        VAULTMIND_DATA_DIR: DATA_DIR, // tells backend where to store all data
+      },
+    }
+  );
+
+  backendProc.stderr.on('data', d => console.log('[backend]', d.toString().trimEnd()));
+  backendProc.on('error', err  => console.error('[backend] spawn error:', err.message));
+  backendProc.on('exit',  code => {
+    if (code !== null && code !== 0 && code !== undefined) {
+      console.error('[backend] exited with code', code);
+    }
+  });
+}
+
+/** Kill the backend cleanly. */
+function killBackend() {
+  if (backendProc) {
+    backendProc.kill('SIGTERM');
+    backendProc = null;
+  }
+}
+
+// ── Main window ──────────────────────────────────────────────────────────────
+
+async function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width:    1280,
+    height:   820,
+    minWidth: 900,
+    minHeight: 600,
+    titleBarStyle: 'hiddenInset',  // native Mac traffic lights, no title text
+    backgroundColor: '#0f0f0f',
+    show: false,                   // show only after page loads (prevents white flash)
+    webPreferences: {
+      nodeIntegration:  false,
+      contextIsolation: true,
+    },
+  });
+
+  // External links (Google OAuth popup, ollama.ai, etc.) → open in Safari/Chrome
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Prevent navigating away from the app inside the window
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const isLocal = url.startsWith(`http://127.0.0.1:${PORT}`)
+                 || url.startsWith(`http://localhost:${PORT}`);
+    if (!isLocal) {
+      e.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
+  // Close loading splash, show main window
+  mainWindow.once('ready-to-show', () => {
+    if (loadingWindow && !loadingWindow.isDestroyed()) loadingWindow.close();
+    mainWindow.show();
+  });
+
+  await mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
+}
+
+// ── App initialization ───────────────────────────────────────────────────────
+
+async function initialize() {
+  showLoadingWindow();
+
+  try {
+    // Step 1: Find Python
+    setLoadingStatus('Checking Python…', 10);
+    const python = findPython();
+    if (!python) {
+      throw new Error(
+        'Python 3 is required but was not found.\n\n' +
+        'Install it via Homebrew:  brew install python3\n' +
+        'or download from:  https://www.python.org/downloads/'
+      );
+    }
+
+    // Step 2: Set up venv (skipped on every launch except the first)
+    await ensureVenv(python);
+
+    // Step 3: Start the backend
+    setLoadingStatus('Starting VaultMind…', 70);
+    startBackend();
+
+    // Step 4: Wait for it to be ready
+    setLoadingStatus('Loading AI backend…', 82);
+    await waitForBackend();
+
+    // Step 5: Open the app
+    setLoadingStatus('Ready!', 100);
+    await createMainWindow();
+
+  } catch (err) {
+    if (loadingWindow && !loadingWindow.isDestroyed()) loadingWindow.close();
+    dialog.showErrorBox('VaultMind could not start', err.message);
+    app.quit();
+  }
+}
+
+// ── Lifecycle hooks ──────────────────────────────────────────────────────────
+
+app.whenReady().then(initialize);
+
+// macOS: re-open window when dock icon is clicked and no windows are open
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    // Backend is already running — just open a new window
+    createMainWindow().catch(console.error);
+  }
+});
+
+// Kill backend when all windows are closed (non-macOS quits the app too)
+app.on('window-all-closed', () => {
+  killBackend();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+// Always kill backend before quitting (catches Cmd+Q, dock quit, etc.)
+app.on('before-quit', killBackend);

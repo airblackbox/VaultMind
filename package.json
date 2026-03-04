@@ -1,0 +1,46 @@
+{
+  "name": "vaultmind",
+  "version": "1.0.0",
+  "description": "Your personal AI. Local. Private. Yours.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac --publish never",
+    "pack":  "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron":         "^34.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId":       "com.vaultmind.app",
+    "productName": "VaultMind",
+    "copyright":   "Copyright © 2025 VaultMind",
+    "asar": false,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["universal"] }
+      ]
+    },
+    "dmg": {
+      "title":           "Install VaultMind",
+      "backgroundColor": "#0f0f0f",
+      "window":          { "width": 540, "height": 380 }
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "backend/**/*",
+      "frontend/**/*",
+      "!backend/__pycache__/**",
+      "!backend/**/*.pyc",
+      "!backend/chroma_db/**",
+      "!backend/connector_config.json",
+      "!backend/feed_events.json",
+      "!backend/gmail_token.json",
+      "!backend/gmail_credentials.json",
+      "!**/*.log"
+    ]
+  }
+}

@@ -22,3 +22,16 @@ env/
 
 # Uploaded files (if any temp storage is added later)
 uploads/
+
+# Electron
+node_modules/
+dist/
+out/
+*.dmg
+
+# Sensitive connector data
+backend/connector_config.json
+backend/feed_events.json
+backend/gmail_token.json
+backend/gmail_credentials.json
+vaultmind.log
