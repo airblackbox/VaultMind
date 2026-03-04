@@ -116,8 +116,7 @@ def get_notion_page_text(page_id: str, headers: dict) -> str:
         return ""
 
 def sync_notion_now(notion_cfg: dict):
-    token     = notion_cfg.get("token", "")
-    workspace = notion_cfg.get("workspace", "Notion")
+    token = notion_cfg.get("token", "")
     if not token:
         return 0
 
@@ -139,7 +138,7 @@ def sync_notion_now(notion_cfg: dict):
         print(f"Notion search error: {e}")
         return 0
 
-    col   = get_collection(workspace)
+    col    = get_collection()
     synced = 0
 
     for page in pages:
@@ -147,7 +146,6 @@ def sync_notion_now(notion_cfg: dict):
         title   = get_notion_title(page)
         source  = f"notion:{page_id}"
 
-        # Skip if already indexed
         existing = col.get(where={"source": source}, include=["metadatas"])
         if existing["ids"]:
             continue
@@ -159,10 +157,9 @@ def sync_notion_now(notion_cfg: dict):
         chunks = chunk_text(text)
         print(f"  📓 Notion: indexing '{title}' ({len(chunks)} chunks)")
         embed_and_store(chunks, source, col)
-        log_feed_event(title, workspace, len(chunks), "notion", source)
+        log_feed_event(title, "vault", len(chunks), "notion", source)
         synced += 1
 
-    # Update last synced timestamp
     cfg = load_config()
     if "notion" not in cfg:
         cfg["notion"] = {}
@@ -212,13 +209,12 @@ def extract_email_text(msg_data: dict) -> tuple[str, str]:
     return subject, full
 
 def sync_gmail_now(gmail_cfg: dict, max_emails: int = 100) -> int:
-    """Fetch and index recent inbox emails. Returns count of newly indexed emails."""
+    """Fetch and index recent inbox emails into the single vault collection."""
     service = get_gmail_service()
     if not service:
         return 0
-    workspace = gmail_cfg.get('workspace', 'Gmail')
-    col       = get_collection(workspace)
-    synced    = 0
+    col    = get_collection()
+    synced = 0
     try:
         results  = service.users().messages().list(
             userId='me', maxResults=max_emails, q='is:inbox -is:spam'
@@ -240,7 +236,7 @@ def sync_gmail_now(gmail_cfg: dict, max_emails: int = 100) -> int:
                 continue
             chunks = chunk_text(full_text)
             embed_and_store(chunks, source, col)
-            log_feed_event(subject, workspace, len(chunks), "gmail", source)
+            log_feed_event(subject, "vault", len(chunks), "gmail", source)
             synced += 1
             print(f"  📧 Gmail: indexed '{subject[:50]}'")
         except Exception as e:
@@ -354,50 +350,11 @@ AVAILABLE_MODELS = [
     {"id": "deepseek-r1", "label": "DeepSeek R1"},
 ]
 
-# ── Workspace helpers ─────────────────────────────────────────
+# ── Single vault collection ───────────────────────────────────
+# Everything lives in one collection — docs, emails, web pages, all of it.
 
-def collection_name(workspace: str) -> str:
-    if not workspace or workspace.strip().lower() in ("default", ""):
-        return "vaultmind_docs"
-    safe = workspace.strip().lower().replace(" ", "_").replace("-", "_")
-    return f"vaultmind_{safe}"
-
-def get_collection(workspace: str = "Default"):
-    return chroma.get_or_create_collection(collection_name(workspace))
-
-def workspace_from_collection(col_name: str) -> str:
-    if col_name == "vaultmind_docs":
-        return "Default"
-    if col_name.startswith("vaultmind_"):
-        return col_name[len("vaultmind_"):].replace("_", " ").title()
-    return col_name
-
-# ── Workspaces API ────────────────────────────────────────────
-
-@app.get("/workspaces")
-async def list_workspaces():
-    try:
-        cols  = chroma.list_collections()
-        names = [workspace_from_collection(c.name) for c in cols
-                 if c.name == "vaultmind_docs" or c.name.startswith("vaultmind_")]
-    except Exception:
-        names = []
-    if not names:
-        names = ["Default"]
-    if "Default" in names:
-        names = ["Default"] + [n for n in names if n != "Default"]
-    return {"workspaces": names}
-
-class WorkspaceCreate(BaseModel):
-    name: str
-
-@app.post("/workspaces")
-async def create_workspace(data: WorkspaceCreate):
-    name = data.name.strip()
-    if not name:
-        return {"error": "Workspace name cannot be empty"}
-    get_collection(name)
-    return {"message": f"Workspace '{name}' created", "name": name}
+def get_collection():
+    return chroma.get_or_create_collection("vaultmind_vault")
 
 # ── Models API ────────────────────────────────────────────────
 
@@ -453,17 +410,17 @@ def embed_and_store(chunks: list[str], source: str, col):
 @app.post("/upload")
 async def upload_document(
     file:      UploadFile = File(...),
-    workspace: str        = Form(default="Default")
+    workspace: str        = Form(default="Default")   # kept for compat, ignored
 ):
     contents = await file.read()
     text     = extract_text_from_file(contents, file.filename)
     if not text.strip():
         return {"error": f"Could not extract text from '{file.filename}'. Supported: PDF, DOCX, TXT, MD, CSV"}
     chunks = chunk_text(text)
-    print(f"\n📄 [{workspace}] Indexing '{file.filename}' — {len(chunks)} chunks")
-    col = get_collection(workspace)
+    print(f"\n📄 Indexing '{file.filename}' — {len(chunks)} chunks")
+    col = get_collection()
     embed_and_store(chunks, file.filename, col)
-    log_feed_event(file.filename, workspace, len(chunks), "upload")
+    log_feed_event(file.filename, "vault", len(chunks), "upload")
     return {"message": f"Indexed {file.filename}", "chunks": len(chunks)}
 
 # ── URL ingest ────────────────────────────────────────────────
@@ -504,16 +461,16 @@ async def ingest_url(data: UrlIngest):
 
     source = f"🌐 {title[:80]}"
     chunks = chunk_text(text)
-    col    = get_collection(data.workspace)
+    col    = get_collection()
     embed_and_store(chunks, source, col)
-    log_feed_event(title, data.workspace, len(chunks), "url")
+    log_feed_event(title, "vault", len(chunks), "url")
     return {"message": f"Indexed {title}", "chunks": len(chunks), "source": source}
 
 # ── Files ─────────────────────────────────────────────────────
 
 @app.get("/files")
-async def list_files(workspace: str = Query(default="Default")):
-    col     = get_collection(workspace)
+async def list_files(workspace: str = Query(default="Default")):  # workspace kept for compat
+    col     = get_collection()
     results = col.get(include=["metadatas"])
     files   = {}
     for meta in results["metadatas"]:
@@ -523,7 +480,7 @@ async def list_files(workspace: str = Query(default="Default")):
 
 @app.delete("/files/{filename}")
 async def delete_file(filename: str, workspace: str = Query(default="Default")):
-    col     = get_collection(workspace)
+    col     = get_collection()
     results = col.get(where={"source": filename}, include=["metadatas"])
     ids     = results["ids"]
     if not ids:
@@ -736,18 +693,7 @@ EMAIL_KEYWORDS = {"email", "emails", "inbox", "gmail", "mail", "summarize my day
 async def chat(msg: ChatMessage):
     chat_model         = msg.model or DEFAULT_MODEL
     question_embedding = ollama.embeddings(model=EMBED_MODEL, prompt=msg.message)["embedding"]
-
-    # Smart workspace routing: if the query is about emails and the user isn't
-    # already in a Gmail-type workspace, transparently switch to it
-    col = get_collection(msg.workspace)
-    msg_lower = msg.message.lower()
-    if not msg.pinned_source and any(kw in msg_lower for kw in EMAIL_KEYWORDS):
-        cfg = load_config()
-        gmail_ws = cfg.get("gmail", {}).get("workspace", "Gmail")
-        if gmail_ws != msg.workspace:
-            gmail_col = get_collection(gmail_ws)
-            if gmail_col.count() > 0:
-                col = gmail_col   # transparently route to Gmail workspace
+    col                = get_collection()
 
     # If the user clicked a specific feed item, pin retrieval to that source only
     if msg.pinned_source:
@@ -804,14 +750,14 @@ async def chat(msg: ChatMessage):
 # ── Inbox Digest ──────────────────────────────────────────────
 
 class DigestRequest(BaseModel):
-    workspace: str = "Gmail"
     connector: str = "gmail"   # source prefix to filter on
     model:     str = "mistral"
+    workspace: str = "vault"   # kept for compat, ignored
 
 @app.post("/digest")
 async def digest(req: DigestRequest):
-    """Retrieve ALL emails from a connector, group by source, and stream a ranked summary."""
-    col = get_collection(req.workspace)
+    """Retrieve ALL emails from the vault, group by source, stream a ranked summary."""
+    col = get_collection()
 
     # Pull every chunk in this workspace and keep only the target connector's
     all_results = col.get(include=["documents", "metadatas"])
@@ -885,12 +831,12 @@ async def digest(req: DigestRequest):
 # ── Status / Health ───────────────────────────────────────────
 
 @app.get("/status")
-async def status(workspace: str = Query(default="Default")):
+async def status(workspace: str = Query(default="Default")):  # workspace kept for compat
     try:
-        count = get_collection(workspace).count()
+        count = get_collection().count()
     except Exception:
         count = 0
-    return {"chunks_indexed": count, "status": "running", "workspace": workspace}
+    return {"chunks_indexed": count, "status": "running"}
 
 @app.get("/health")
 async def health():
@@ -913,7 +859,7 @@ class QueryMessage(BaseModel):
 @app.post("/query")
 async def query(msg: QueryMessage):
     try:
-        col        = get_collection(msg.workspace)
+        col        = get_collection()
         chat_model = msg.model or DEFAULT_MODEL
         q_emb      = ollama.embeddings(model=EMBED_MODEL, prompt=msg.message)["embedding"]
 

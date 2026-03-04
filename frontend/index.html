@@ -263,11 +263,7 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
 
   <!-- Sidebar -->
   <div class="sidebar">
-    <div class="workspace-bar">
-      <select id="workspace-select" class="workspace-select"><option value="Default">Default</option></select>
-      <button class="new-ws-btn" id="new-ws-btn" title="New workspace">+</button>
-    </div>
-    <div class="upload-zone" id="zone"><div class="ico">📂</div><p><strong>Drop files here</strong><br>PDF · Word · TXT · MD · CSV</p></div>
+    <div class="upload-zone" id="zone" style="margin-top:14px"><div class="ico">📂</div><p><strong>Drop files here</strong><br>PDF · Word · TXT · MD · CSV</p></div>
     <input type="file" id="file-input" accept=".pdf,.docx,.txt,.md,.csv" multiple>
     <div class="url-zone">
       <input id="url-input" type="url" placeholder="Paste a URL to index…">
@@ -299,50 +295,20 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
     </div>
   </div>
 
-  <!-- Chat + Feed area -->
+  <!-- Chat area -->
   <div class="chat-area">
-    <div class="tab-bar">
-      <button class="tab-btn active" id="tab-chat" onclick="switchTab('chat')">💬 Chat</button>
-      <button class="tab-btn" id="tab-feed" onclick="switchTab('feed')">📡 Feed</button>
-    </div>
-
-    <!-- Chat panel -->
-    <div id="panel-chat" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
-      <div class="msgs" id="msgs">
-        <div class="empty-state" id="empty">
-          <div class="big">🔒</div>
-          <div class="empty-title">Nothing leaves this machine</div>
-          <div class="empty-sub">Drop a file or paste a URL on the left,<br>then ask anything about it.</div>
-        </div>
-      </div>
-      <div id="pin-banner" style="display:none;padding:6px 20px;background:#08081a;border-top:1px solid #1a1a3a;font-size:12px;color:#6366f1;align-items:center;gap:8px;flex-shrink:0">
-        <span>📌 Pinned to this source — answers will only use this item</span>
-        <button onclick="clearPin()" style="background:none;border:none;color:#444;cursor:pointer;font-size:12px;padding:0;margin-left:auto;line-height:1" title="Clear pin">✕</button>
-      </div>
-      <div id="quick-actions" style="display:none;padding:6px 20px 0;gap:6px;flex-wrap:wrap;flex-shrink:0"></div>
-      <div class="bar">
-        <button class="mode-btn" id="mode-btn">🔒 Vault</button>
-        <input id="q" type="text" placeholder="Ask anything about your documents…" disabled>
-        <button id="send" disabled>Send</button>
+    <div class="msgs" id="msgs">
+      <div class="empty-state" id="empty">
+        <div class="big">🔒</div>
+        <div class="empty-title">Nothing leaves this machine</div>
+        <div class="empty-sub">Drop a file or paste a URL on the left,<br>then ask anything about it.</div>
       </div>
     </div>
-
-    <!-- Feed panel -->
-    <div id="panel-feed" style="flex:1;display:none;flex-direction:column;overflow:hidden">
-      <div class="feed-panel" id="feed-list">
-        <div class="feed-header">
-          <div class="feed-title-row"><span class="feed-title">All Sources — Live Feed</span></div>
-          <div style="display:flex;gap:6px">
-            <button class="feed-refresh-btn" id="digest-btn" onclick="summarizeInbox()" title="AI reads all your emails and ranks them by importance">📧 Summarize Inbox</button>
-            <button class="feed-refresh-btn" onclick="loadFeed()">↻ Refresh</button>
-          </div>
-        </div>
-        <div class="feed-connector-bar" id="connector-bar"></div>
-        <div class="feed-empty" id="feed-empty">
-          <div class="big">📡</div>
-          <p>Nothing in the feed yet.<br>Upload docs, add URLs, or connect<br>Notion via the ⚙️ settings.</p>
-        </div>
-      </div>
+    <div id="quick-actions" style="display:none;padding:6px 20px 0;gap:6px;flex-wrap:wrap;flex-shrink:0"></div>
+    <div class="bar">
+      <button class="mode-btn" id="mode-btn">🔒 Vault</button>
+      <input id="q" type="text" placeholder="Ask anything about your documents…" disabled>
+      <button id="send" disabled>Send</button>
     </div>
   </div>
 
@@ -371,11 +337,6 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
             <label class="field-label">Integration Token</label>
             <input class="field-input" type="password" id="notion-token" placeholder="secret_xxxxxxxxxxxxxxxx">
             <span class="field-hint">Create one at <a href="https://www.notion.so/my-integrations" target="_blank">notion.so/my-integrations</a> and share your pages with it.</span>
-          </div>
-          <div class="field-row">
-            <label class="field-label">Workspace Name</label>
-            <input class="field-input" type="text" id="notion-workspace" placeholder="Notion" value="Notion">
-            <span class="field-hint">Pages will be indexed into this workspace.</span>
           </div>
           <div class="field-row">
             <label class="field-label">Sync every (minutes)</label>
@@ -416,11 +377,6 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
           <div class="field-row">
             <label class="field-label">Client Secret</label>
             <input class="field-input" type="password" id="gmail-client-secret" placeholder="GOCSPX-…">
-          </div>
-          <div class="field-row">
-            <label class="field-label">Workspace Name</label>
-            <input class="field-input" type="text" id="gmail-workspace" placeholder="Gmail" value="Gmail">
-            <span class="field-hint">Emails will be indexed into this workspace.</span>
           </div>
           <div class="connector-actions">
             <button class="btn-save" onclick="connectGmail()">🔑 Connect Gmail</button>
@@ -469,16 +425,12 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
 const API = 'http://localhost:8000';
 
 // ── State ─────────────────────────────────────────────────────
-let currentWorkspace  = 'Default';
-let currentModel      = 'mistral';
-let history           = [];
-let busy              = false;
-let agentMode         = false;
-let docCount          = 0;
-let webCount          = 0;
-let currentTab        = 'chat';
-let filterConnector   = null;  // null = show all
-let pinnedSource      = null;  // source_id pinned when clicking a feed item
+let currentModel = 'mistral';
+let history      = [];
+let busy         = false;
+let agentMode    = false;
+let docCount     = 0;
+let webCount     = 0;
 
 // ── DOM ───────────────────────────────────────────────────────
 const sidebar        = document.querySelector('.sidebar');
@@ -490,20 +442,8 @@ const sendBtn        = document.getElementById('send');
 const zoneEl         = document.getElementById('zone');
 const fileInp        = document.getElementById('file-input');
 const hstatus        = document.getElementById('hstatus');
-const wsSelect       = document.getElementById('workspace-select');
-const newWsBtn       = document.getElementById('new-ws-btn');
 const modelSelect    = document.getElementById('model-select');
 const modeBtn        = document.getElementById('mode-btn');
-
-// ── Tabs ──────────────────────────────────────────────────────
-function switchTab(tab) {
-  currentTab = tab;
-  document.getElementById('panel-chat').style.display = tab === 'chat' ? 'flex' : 'none';
-  document.getElementById('panel-feed').style.display = tab === 'feed' ? 'flex' : 'none';
-  document.getElementById('tab-chat').className = 'tab-btn' + (tab === 'chat' ? ' active' : '');
-  document.getElementById('tab-feed').className = 'tab-btn' + (tab === 'feed' ? ' active' : '');
-  if (tab === 'feed') loadFeed();
-}
 
 // ── Sidebar toggle ────────────────────────────────────────────
 const isMobile = () => window.innerWidth <= 640;
@@ -540,7 +480,6 @@ async function loadConnectorConfig() {
     ]);
     const notion = d.connectors?.notion || {};
     document.getElementById('notion-enabled').checked = notion.enabled  || false;
-    document.getElementById('notion-workspace').value = notion.workspace || 'Notion';
     document.getElementById('notion-interval').value  = notion.poll_interval_minutes || 15;
 
     // Gmail — show connected vs setup state
@@ -549,8 +488,6 @@ async function loadConnectorConfig() {
       document.getElementById('gmail-connected').style.display = 'block';
       document.getElementById('gmail-enabled').checked         = true;
     } else {
-      const gmailCfg = d.connectors?.gmail || {};
-      document.getElementById('gmail-workspace').value         = gmailCfg.workspace || 'Gmail';
       document.getElementById('gmail-setup').style.display     = 'block';
       document.getElementById('gmail-connected').style.display = 'none';
       document.getElementById('gmail-enabled').checked         = false;
@@ -559,10 +496,9 @@ async function loadConnectorConfig() {
 }
 
 async function saveNotion() {
-  const token     = document.getElementById('notion-token').value.trim();
-  const workspace = document.getElementById('notion-workspace').value.trim() || 'Notion';
-  const enabled   = document.getElementById('notion-enabled').checked;
-  const interval  = parseInt(document.getElementById('notion-interval').value) || 15;
+  const token    = document.getElementById('notion-token').value.trim();
+  const enabled  = document.getElementById('notion-enabled').checked;
+  const interval = parseInt(document.getElementById('notion-interval').value) || 15;
 
   if (enabled && !token) { toast('❌ Enter your Notion integration token', true); return; }
 
@@ -570,16 +506,9 @@ async function saveNotion() {
     const d = await fetch(`${API}/connectors`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ connector: 'notion', enabled, token, workspace, poll_interval_minutes: interval })
+      body: JSON.stringify({ connector: 'notion', enabled, token, poll_interval_minutes: interval })
     }).then(r => r.json());
     toast('✅ Notion connector saved');
-    // Add workspace to dropdown
-    if (workspace && ![...wsSelect.options].some(o => o.value === workspace)) {
-      const opt = document.createElement('option');
-      opt.value = workspace; opt.textContent = workspace;
-      wsSelect.appendChild(opt);
-    }
-    updateConnectorBar();
   } catch { toast('❌ Could not save connector', true); }
 }
 
@@ -593,42 +522,13 @@ async function syncNotion() {
     else {
       sts.textContent = `✅ ${d.message}`;
       toast(`✅ ${d.message}`);
-      loadFeed(); ping();
+      ping();
     }
   } catch { sts.textContent = '❌ Sync failed'; toast('❌ Sync failed', true); }
   btn.disabled = false;
 }
 
 // ── Workspace ─────────────────────────────────────────────────
-async function loadWorkspaces() {
-  try {
-    const d = await fetch(`${API}/workspaces`).then(r => r.json());
-    wsSelect.innerHTML = '';
-    d.workspaces.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name; opt.textContent = name;
-      if (name === currentWorkspace) opt.selected = true;
-      wsSelect.appendChild(opt);
-    });
-  } catch {}
-}
-wsSelect.onchange = () => {
-  currentWorkspace = wsSelect.value;
-  history = []; clearFilesList(); loadFiles(); ping();
-};
-newWsBtn.onclick = () => {
-  const name = prompt('New workspace name (e.g. Work, Health, Finance):');
-  if (!name?.trim()) return;
-  const n = name.trim();
-  fetch(`${API}/workspaces`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name: n}) })
-    .then(r => r.json()).then(d => {
-      if (d.error) { toast(`❌ ${d.error}`, true); return; }
-      const opt = document.createElement('option');
-      opt.value = n; opt.textContent = n; wsSelect.appendChild(opt);
-      wsSelect.value = n; currentWorkspace = n;
-      history = []; clearFilesList(); toast(`✅ Workspace "${n}" created`); ping();
-    });
-};
 function clearFilesList() {
   docCount = 0; webCount = 0;
   document.getElementById('docs-count').textContent = '0';
@@ -677,18 +577,19 @@ async function checkSetup() {
 }
 function launchApp() {
   document.getElementById('setup-screen').style.display = 'none';
-  ping(); loadWorkspaces(); loadFiles(); updateConnectorBar();
-  setInterval(loadFeed, 30000);  // refresh feed every 30s
+  ping(); loadFiles(); updateQuickActions(false);
+  // Check Gmail status to show quick actions if connected
+  fetch(`${API}/auth/gmail/status`).then(r => r.json())
+    .then(s => updateQuickActions(s.connected === true)).catch(() => {});
 }
 checkSetup();
 
 // ── Status ping ───────────────────────────────────────────────
 async function ping() {
   try {
-    const d = await fetch(`${API}/status?workspace=${encodeURIComponent(currentWorkspace)}`).then(r => r.json());
+    const d = await fetch(`${API}/status`).then(r => r.json());
     hstatus.className = 'hstatus ok';
-    const ws = currentWorkspace === 'Default' ? '' : ` · ${currentWorkspace}`;
-    hstatus.querySelector('.stext').textContent = d.chunks_indexed === 0 ? `Running${ws} — no docs yet` : `${d.chunks_indexed} chunks${ws}`;
+    hstatus.querySelector('.stext').textContent = d.chunks_indexed === 0 ? 'Running — nothing indexed yet' : `${d.chunks_indexed} chunks indexed`;
     qEl.disabled = sendBtn.disabled = false;
   } catch {
     hstatus.className = 'hstatus warn';
@@ -700,7 +601,7 @@ async function ping() {
 // ── Load files ────────────────────────────────────────────────
 async function loadFiles() {
   try {
-    const d = await fetch(`${API}/files?workspace=${encodeURIComponent(currentWorkspace)}`).then(r => r.json());
+    const d = await fetch(`${API}/files`).then(r => r.json());
     d.files.forEach(f => addFileCard(f.name, f.chunks));
   } catch {}
 }
@@ -722,9 +623,9 @@ async function ingestUrl() {
   const url = urlInput.value.trim(); if (!url) return;
   toast(`Fetching ${url}…`); urlInput.value = ''; urlBtn.disabled = true;
   try {
-    const d = await fetch(`${API}/ingest-url`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url, workspace: currentWorkspace}) }).then(r => r.json());
+    const d = await fetch(`${API}/ingest-url`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url}) }).then(r => r.json());
     if (d.error) throw new Error(d.error);
-    addFileCard(d.source, d.chunks); toast(`✅ ${d.source} — ${d.chunks} chunks`); ping(); if (currentTab==='feed') loadFeed();
+    addFileCard(d.source, d.chunks); toast(`✅ ${d.source} — ${d.chunks} chunks`); ping();
   } catch(e) { toast(`❌ ${e.message}`, true); }
   urlBtn.disabled = false;
 }
@@ -733,10 +634,10 @@ async function ingest(files) {
   for (const f of files) {
     toast(`Indexing ${f.name}…`);
     try {
-      const fd = new FormData(); fd.append('file', f); fd.append('workspace', currentWorkspace);
+      const fd = new FormData(); fd.append('file', f);
       const d = await fetch(`${API}/upload`, {method:'POST', body:fd}).then(r => r.json());
       if (d.error) throw new Error(d.error);
-      addFileCard(f.name, d.chunks); toast(`✅ ${f.name} — ${d.chunks} chunks`); ping(); if (currentTab==='feed') loadFeed();
+      addFileCard(f.name, d.chunks); toast(`✅ ${f.name} — ${d.chunks} chunks`); ping();
     } catch(e) { toast(`❌ ${e.message}`, true); }
   }
 }
@@ -773,7 +674,7 @@ async function deleteFile(enc, safeId, section) {
   const name = decodeURIComponent(enc);
   if (!confirm(`Remove "${name}" from the index?`)) return;
   try {
-    const d = await fetch(`${API}/files/${enc}?workspace=${encodeURIComponent(currentWorkspace)}`, {method:'DELETE'}).then(r => r.json());
+    const d = await fetch(`${API}/files/${enc}`, {method:'DELETE'}).then(r => r.json());
     if (d.error) throw new Error(d.error);
     document.getElementById(safeId)?.remove();
     if (section === 'web') { webCount = Math.max(0,webCount-1); updateCount('web',webCount); if (!webCount) { const e=document.createElement('div'); e.className='section-empty'; e.id='web-empty'; e.textContent='No URLs indexed yet'; document.getElementById('web-list').appendChild(e); } }
@@ -782,113 +683,9 @@ async function deleteFile(enc, safeId, section) {
   } catch(e) { toast(`❌ ${e.message}`, true); }
 }
 
-// ── Feed ──────────────────────────────────────────────────────
-const CONNECTOR_ICONS = { notion:'📓', gmail:'📧', slack:'💬', whatsapp:'🟢', upload:'📂', url:'🌐', manual:'📄' };
-
-function timeAgo(iso) {
-  const diff = (Date.now() - new Date(iso)) / 1000;
-  if (diff < 60)   return 'just now';
-  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-  return `${Math.floor(diff/86400)}d ago`;
-}
-
-async function loadFeed() {
-  try {
-    const d        = await fetch(`${API}/feed?limit=200`).then(r => r.json());
-    const events   = d.events || [];
-    const list     = document.getElementById('feed-list');
-
-    // Remove old items
-    [...list.querySelectorAll('.feed-item')].forEach(el => el.remove());
-
-    const displayed = filterConnector
-      ? events.filter(ev => ev.connector === filterConnector)
-      : events;
-
-    document.getElementById('feed-empty').style.display = displayed.length ? 'none' : 'flex';
-
-    displayed.forEach(ev => {
-      const icon = CONNECTOR_ICONS[ev.connector] || '📄';
-      const el   = document.createElement('div');
-      el.className = 'feed-item clickable';
-      el.title    = 'Click to chat about this';
-      el.onclick  = () => jumpToChat(ev.workspace, ev.title, ev.connector, ev.source_id);
-      el.innerHTML = `
-        <div class="feed-item-icon">${icon}</div>
-        <div class="feed-item-body">
-          <div class="feed-item-title">${ev.title}</div>
-          <div class="feed-item-meta">
-            <span class="feed-ws-badge">${ev.workspace}</span>
-            <span class="feed-source-badge">${ev.connector}</span>
-            <span class="feed-chunks">${ev.chunks} chunks</span>
-            <span class="feed-time">${timeAgo(ev.timestamp)}</span>
-          </div>
-        </div>`;
-      list.appendChild(el);
-    });
-  } catch {}
-}
-
-function jumpToChat(workspace, title, connector, sourceId) {
-  // Switch to the right workspace
-  if (workspace && [...wsSelect.options].some(o => o.value === workspace)) {
-    if (wsSelect.value !== workspace) {
-      wsSelect.value   = workspace;
-      currentWorkspace = workspace;
-      history = [];
-      clearFilesList();
-      loadFiles();
-      ping();
-    }
-  }
-  // Pin retrieval to this exact source so the right item comes back
-  pinnedSource = sourceId || null;
-  updatePinBanner();
-  // Switch to chat tab
-  switchTab('chat');
-  // Pre-fill with a smart prompt
-  const verb = connector === 'gmail'  ? 'Summarize this email: '   :
-               connector === 'notion' ? 'Tell me about this page: ' :
-                                        'Tell me about: ';
-  qEl.value = verb + title;
-  qEl.focus();
-  closeSidebarOnMobile();
-}
-
-function updatePinBanner() {
-  const banner = document.getElementById('pin-banner');
-  if (banner) banner.style.display = pinnedSource ? 'flex' : 'none';
-}
-
-function clearPin() {
-  pinnedSource = null;
-  updatePinBanner();
-}
-
-function toggleFeedFilter(connectorId) {
-  filterConnector = filterConnector === connectorId ? null : connectorId;
-  updateConnectorBar();
-  loadFeed();
-}
-
 // ── Inbox Digest ──────────────────────────────────────────────
 async function summarizeInbox() {
-  const btn = document.getElementById('digest-btn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Reading emails…';
-
-  // Figure out which Gmail workspace is connected
-  let gmailWorkspace = 'Gmail';
-  try {
-    const cfg = await fetch(`${API}/connectors`).then(r => r.json());
-    gmailWorkspace = cfg.connectors?.gmail?.workspace || 'Gmail';
-  } catch {}
-
-  // Switch to chat tab and set up the bot response bubble
-  switchTab('chat');
   document.getElementById('empty')?.remove();
-
   const botEl  = document.createElement('div'); botEl.className = 'msg-bot';
   const bubble = document.createElement('div'); bubble.className = 'bubble';
   const cursor = document.createElement('span'); cursor.className = 'cursor';
@@ -901,13 +698,10 @@ async function summarizeInbox() {
   let fullText = '';
   try {
     const res = await fetch(`${API}/digest`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ workspace: gmailWorkspace, connector: 'gmail', model: currentModel })
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ connector: 'gmail', model: currentModel })
     });
-    const reader = res.body.getReader();
-    const dec    = new TextDecoder();
-    let buf = '';
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
     while (true) {
       const {done, value} = await reader.read(); if (done) break;
       buf += dec.decode(value, {stream:true});
@@ -916,29 +710,12 @@ async function summarizeInbox() {
         if (!line.startsWith('data: ')) continue;
         try {
           const data = JSON.parse(line.slice(6));
-          if (data.token) {
-            fullText += data.token;
-            bubble.textContent = stripMarkdown(fullText);
-            bubble.appendChild(cursor);
-            msgsEl.scrollTop = msgsEl.scrollHeight;
-          }
-          if (data.done) {
-            cursor.remove();
-            const s = document.createElement('div');
-            s.className = 'src';
-            s.textContent = `Digest from ${data.sources?.length || 0} emails`;
-            botEl.appendChild(s);
-          }
+          if (data.token) { fullText += data.token; bubble.textContent = stripMarkdown(fullText); bubble.appendChild(cursor); msgsEl.scrollTop = msgsEl.scrollHeight; }
+          if (data.done) { cursor.remove(); const s=document.createElement('div'); s.className='src'; s.textContent=`Digest from ${data.sources?.length||0} emails`; botEl.appendChild(s); }
         } catch {}
       }
     }
-  } catch(e) {
-    cursor.remove();
-    bubble.textContent = 'Could not generate digest — is VaultMind running?';
-  }
-
-  btn.disabled = false;
-  btn.textContent = '📧 Summarize Inbox';
+  } catch { cursor.remove(); bubble.textContent = 'Could not generate digest — is VaultMind running?'; }
   msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 
@@ -946,7 +723,6 @@ async function summarizeInbox() {
 async function connectGmail() {
   const clientId     = document.getElementById('gmail-client-id').value.trim();
   const clientSecret = document.getElementById('gmail-client-secret').value.trim();
-  const workspace    = document.getElementById('gmail-workspace').value.trim() || 'Gmail';
   const sts          = document.getElementById('gmail-connect-status');
   if (!clientId || !clientSecret) { toast('❌ Enter Client ID and Secret', true); return; }
 
@@ -954,7 +730,7 @@ async function connectGmail() {
   try {
     const d = await fetch(`${API}/auth/gmail/configure`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({client_id: clientId, client_secret: clientSecret, workspace})
+      body: JSON.stringify({client_id: clientId, client_secret: clientSecret})
     }).then(r => r.json());
     if (d.error) { sts.textContent = `❌ ${d.error}`; return; }
 
@@ -978,12 +754,7 @@ async function connectGmail() {
         document.getElementById('gmail-connected').style.display = 'block';
         document.getElementById('gmail-enabled').checked         = true;
         toast('✅ Gmail connected!');
-        updateConnectorBar();
-        if (workspace && ![...wsSelect.options].some(o => o.value === workspace)) {
-          const opt = document.createElement('option');
-          opt.value = workspace; opt.textContent = workspace;
-          wsSelect.appendChild(opt);
-        }
+        updateQuickActions(true);
       }
     }, 2000);
   } catch(e) { sts.textContent = `❌ ${e.message}`; }
@@ -996,7 +767,7 @@ async function syncGmail() {
   try {
     const d = await fetch(`${API}/connectors/gmail/sync`, {method:'POST'}).then(r => r.json());
     if (d.error) { sts.textContent = `❌ ${d.error}`; toast(`❌ ${d.error}`, true); }
-    else { sts.textContent = `✅ ${d.message}`; toast(`✅ ${d.message}`); loadFeed(); ping(); }
+    else { sts.textContent = `✅ ${d.message}`; toast(`✅ ${d.message}`); ping(); }
   } catch { sts.textContent = '❌ Sync failed'; toast('❌ Sync failed', true); }
   btn.disabled = false;
 }
@@ -1008,45 +779,9 @@ async function disconnectGmail() {
   document.getElementById('gmail-connected').style.display = 'none';
   document.getElementById('gmail-enabled').checked         = false;
   toast('Gmail disconnected');
-  updateConnectorBar();
+  updateQuickActions(false);
 }
 
-async function updateConnectorBar() {
-  try {
-    const [d, gmailSt] = await Promise.all([
-      fetch(`${API}/connectors`).then(r => r.json()),
-      fetch(`${API}/auth/gmail/status`).then(r => r.json()).catch(() => ({connected:false}))
-    ]);
-    const bar        = document.getElementById('connector-bar');
-    bar.innerHTML    = '';
-    const connectors = d.connectors || {};
-
-    // "All" pill
-    const allBadge     = document.createElement('div');
-    allBadge.className = `connector-badge${filterConnector === null ? ' filtering' : ''}`;
-    allBadge.textContent = 'All';
-    allBadge.onclick   = () => { filterConnector = null; updateConnectorBar(); loadFeed(); };
-    bar.appendChild(allBadge);
-
-    const all = [
-      {id:'notion', label:'Notion', icon:'📓', active: connectors.notion?.enabled === true},
-      {id:'gmail',  label:'Gmail',  icon:'📧', active: gmailSt.connected === true},
-      {id:'upload', label:'Uploads', icon:'📂', active: true},
-      {id:'url',    label:'Web',    icon:'🌐', active: true},
-    ];
-    all.forEach(c => {
-      const isFiltering = filterConnector === c.id;
-      const badge       = document.createElement('div');
-      badge.className   = `connector-badge ${c.active ? 'active' : ''} ${isFiltering ? 'filtering' : ''}`;
-      badge.innerHTML   = `<span class="dot"></span>${c.icon} ${c.label}`;
-      badge.onclick     = () => toggleFeedFilter(c.id);
-      bar.appendChild(badge);
-    });
-
-    // Update quick-action chips in the chat panel
-    updateQuickActions(gmailSt.connected === true);
-  } catch {}
-}
 
 function updateQuickActions(gmailConnected) {
   const qa = document.getElementById('quick-actions');
@@ -1090,15 +825,9 @@ async function ask() {
   let statusEl = null;
   if (agentMode) { statusEl = document.createElement('div'); statusEl.className='status-msg'; statusEl.textContent='🔍 Starting agent…'; msgsEl.insertBefore(statusEl, botEl); msgsEl.scrollTop = msgsEl.scrollHeight; }
 
-  // Capture pinned source for this request, then clear it
-  const thisPinnedSource = pinnedSource;
-  pinnedSource = null;
-  updatePinBanner();
-
   let fullText = '';
   try {
-    const chatBody = { message: text, history, workspace: currentWorkspace, model: currentModel };
-    if (thisPinnedSource) chatBody.pinned_source = thisPinnedSource;
+    const chatBody = { message: text, history, model: currentModel };
     const res = await fetch(agentMode ? `${API}/agent` : `${API}/chat`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(chatBody)
