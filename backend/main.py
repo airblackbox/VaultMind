@@ -1410,22 +1410,84 @@ def _scrape_agency_listing_page(url: str) -> list[dict]:
         print(f"Agency listing scrape error: {e}")
         return []
 
-def _deep_scrape_job_pages(job_urls: list[dict], max_pages: int = 12) -> list[dict]:
+def _deep_scrape_job_pages(job_urls: list[dict], max_pages: int = 15) -> list[dict]:
     """Scrape individual job detail pages and extract full descriptions.
+    Uses JSON-LD structured data first (most job sites embed it),
+    then falls back to HTML text extraction.
     Returns enriched list with description field populated."""
     results = []
     for entry in job_urls[:max_pages]:
         url = entry["url"]
         try:
-            r = requests.get(url, timeout=8, headers=BROWSER_HEADERS)
+            r = requests.get(url, timeout=10, headers=BROWSER_HEADERS)
             if r.status_code != 200:
                 results.append(entry)
                 continue
             soup = BeautifulSoup(r.text, "html.parser")
-            for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
-                tag.decompose()
-            text = soup.get_text(separator="\n", strip=True)[:3000]
-            entry["description"] = text
+
+            description = ""
+            job_title = entry.get("title", "")
+
+            # ── Strategy 1: JSON-LD (application/ld+json) ──────────
+            # Most job sites (Indeed, Motion, Greenhouse, Lever, etc.)
+            # embed full job data in structured JSON-LD.  This is FAR
+            # more reliable than scraping the rendered HTML.
+            for script_tag in soup.find_all("script", type="application/ld+json"):
+                try:
+                    ld_data = json.loads(script_tag.string or "{}")
+                    # Handle both single object and @graph arrays
+                    items = [ld_data] if isinstance(ld_data, dict) else ld_data if isinstance(ld_data, list) else []
+                    if isinstance(ld_data, dict) and "@graph" in ld_data:
+                        items = ld_data["@graph"]
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        if item.get("@type") in ("JobPosting", "JobPosition", "Job"):
+                            raw_desc = item.get("description", "")
+                            # Strip HTML tags from description
+                            raw_desc = _re.sub(r'<[^>]+>', ' ', raw_desc)
+                            raw_desc = _re.sub(r'\s+', ' ', raw_desc).strip()
+                            if len(raw_desc) > 100:
+                                description = raw_desc[:5000]
+                                job_title = item.get("title", job_title)
+                                # Also grab salary if available
+                                salary = item.get("baseSalary", {})
+                                if isinstance(salary, dict) and salary.get("value"):
+                                    val = salary["value"]
+                                    if isinstance(val, dict):
+                                        lo = val.get("minValue", "")
+                                        hi = val.get("maxValue", "")
+                                        unit = val.get("unitText", "YEAR")
+                                        entry["salary"] = f"${lo}-${hi}/{unit}" if lo and hi else ""
+                                # Grab location
+                                loc = item.get("jobLocation", {})
+                                if isinstance(loc, dict):
+                                    addr = loc.get("address", {})
+                                    if isinstance(addr, dict):
+                                        city = addr.get("addressLocality", "")
+                                        state = addr.get("addressRegion", "")
+                                        if city:
+                                            entry["location"] = f"{city}, {state}" if state else city
+                                break
+                    if description:
+                        break
+                except (json.JSONDecodeError, TypeError, AttributeError):
+                    continue
+
+            # ── Strategy 2: HTML text fallback ─────────────────────
+            if not description:
+                # Remove non-content tags, then get text
+                for tag in soup(["style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
+                    tag.decompose()
+                # Try to find main content area first
+                main = soup.find("main") or soup.find("article") or soup.find("div", class_=_re.compile(r'job|description|content|detail', _re.I))
+                if main:
+                    description = main.get_text(separator="\n", strip=True)[:5000]
+                else:
+                    description = soup.get_text(separator="\n", strip=True)[:3000]
+
+            entry["title"] = job_title
+            entry["description"] = description
             results.append(entry)
         except Exception:
             results.append(entry)
@@ -1526,21 +1588,10 @@ async def chat(msg: ChatMessage):
                         agency_listings = _scrape_agency_listing_page(u_url)
                         if agency_listings:
                             yield f"data: {json.dumps({'status': f'Found {len(agency_listings)} job listings. Deep-scraping details…'})}\n\n"
-                            # Deep-scrape individual job pages for full descriptions
-                            enriched = []
-                            for i, listing in enumerate(agency_listings[:15]):
-                                yield f"data: {json.dumps({'status': f'📄 Reading job {i+1}/{min(len(agency_listings),15)}: {listing[\"title\"][:40]}…'})}\n\n"
-                                try:
-                                    jr = requests.get(listing["url"], timeout=8, headers=BROWSER_HEADERS)
-                                    if jr.status_code == 200:
-                                        jsoup = BeautifulSoup(jr.text, "html.parser")
-                                        for tag in jsoup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
-                                            tag.decompose()
-                                        listing["description"] = jsoup.get_text(separator="\n", strip=True)[:2500]
-                                except Exception:
-                                    pass
-                                enriched.append(listing)
-                                all_sources.append(f"[{listing['title'][:60]}]({listing['url']})")
+                            # Use the proper deep-scrape function (JSON-LD + fallback)
+                            enriched = _deep_scrape_job_pages(agency_listings, max_pages=15)
+                            for listing in enriched:
+                                all_sources.append(f"[{listing.get('title','')[:60]}]({listing['url']})")
                             agency_job_details = enriched
                         else:
                             yield f"data: {json.dumps({'status': '⚠️ Could not extract listings from agency page.'})}\n\n"
