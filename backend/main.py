@@ -1458,13 +1458,24 @@ async def chat(msg: ChatMessage):
 
     vault_has_answer = len(relevant_docs) > 0
     wants_web        = _looks_like_web_search(msg.message)
+    has_user_urls    = bool(_extract_urls(msg.message))
 
     # ── Step 2: Decide routing ──────────────────────────────────
-    # Route: VAULT ONLY   — vault has relevant docs & not a web intent
-    # Route: WEB SEARCH   — vault empty/irrelevant OR explicit web intent
-    # Route: HYBRID       — vault has some data + web intent (show both)
-    use_web   = wants_web or not vault_has_answer
-    use_vault = vault_has_answer
+    # RULE: If user pasted a URL → ALWAYS web mode, skip vault entirely.
+    #       The user explicitly wants data from THAT URL, not old vault docs.
+    # Route: VAULT ONLY   — vault has relevant docs & not a web intent & no URLs
+    # Route: WEB SEARCH   — vault empty/irrelevant OR explicit web intent OR URL pasted
+    # Route: HYBRID       — vault has some data + web intent (but no URL pasted)
+    if has_user_urls:
+        # URL pasted → pure web mode, ignore vault completely
+        use_web   = True
+        use_vault = False
+    else:
+        use_web   = wants_web or not vault_has_answer
+        use_vault = vault_has_answer
+        # If wants_web is True, still skip vault to avoid pollution from old indexed pages
+        if wants_web:
+            use_vault = False
 
     skill_block = ""
     if msg.skill == "__custom__" and msg.custom_prompt:
