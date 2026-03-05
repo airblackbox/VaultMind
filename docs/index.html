@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VaultMind — Chat with your docs, locally</title>
+<meta name="description" content="Chat with your documents, email, and the web — entirely on your machine. No API keys. No cloud. No subscription.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔒</text></svg>">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0a;color:#e0e0e0;-webkit-font-smoothing:antialiased}
+a{color:#818cf8;text-decoration:none}
+a:hover{color:#a5b4fc}
+
+/* Nav */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,10,.85);backdrop-filter:blur(12px);border-bottom:1px solid #1a1a1a;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between}
+.nav-logo{font-size:18px;font-weight:700;color:#fff}
+.nav-logo span{color:#6366f1}
+.nav-links{display:flex;gap:24px;align-items:center}
+.nav-links a{font-size:13px;color:#888;font-weight:500;transition:color .2s}
+.nav-links a:hover{color:#fff}
+.nav-cta{background:#6366f1;color:#fff !important;padding:7px 16px;border-radius:8px;font-size:12px;font-weight:600}
+.nav-cta:hover{background:#4f46e5}
+
+/* Sections */
+section{padding:100px 24px;max-width:1100px;margin:0 auto}
+.section-label{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#6366f1;font-weight:600;margin-bottom:12px}
+.section-title{font-size:36px;font-weight:700;color:#fff;line-height:1.2;margin-bottom:16px}
+.section-sub{font-size:16px;color:#666;line-height:1.7;max-width:600px}
+
+/* Hero */
+.hero{padding-top:140px;text-align:center;display:flex;flex-direction:column;align-items:center}
+.hero .section-title{font-size:48px;max-width:700px}
+.hero .section-sub{text-align:center;margin-bottom:36px}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.btn-primary{background:#6366f1;color:#fff;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:background .2s}
+.btn-primary:hover{background:#4f46e5;color:#fff}
+.btn-secondary{background:#1a1a1a;color:#ccc;border:1px solid #2a2a2a;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:8px;transition:all .2s}
+.btn-secondary:hover{border-color:#444;color:#fff}
+.hero-badges{display:flex;gap:10px;margin-top:32px;flex-wrap:wrap;justify-content:center}
+</style>
+.hero-badge{background:#111;border:1px solid #1e1e1e;border-radius:20px;padding:5px 14px;font-size:11px;color:#555;display:flex;align-items:center;gap:6px}
+.hero-badge .dot{width:6px;height:6px;border-radius:50%;background:#22c55e}
+.hero-screenshot{margin-top:48px;max-width:800px;width:100%;border-radius:16px;border:1px solid #1e1e1e;box-shadow:0 40px 80px rgba(0,0,0,.5)}
+
+/* Feature grid */
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
+.feat-card{background:#111;border:1px solid #1a1a1a;border-radius:12px;padding:24px}
+.feat-card .feat-icon{font-size:24px;margin-bottom:12px}
+.feat-card h3{font-size:15px;font-weight:600;color:#ddd;margin-bottom:6px}
+.feat-card p{font-size:13px;color:#555;line-height:1.6}
+
+/* Comparison */
+.compare-table{width:100%;border-collapse:collapse;margin-top:32px;font-size:13px}
+.compare-table th{text-align:left;color:#888;font-weight:500;padding:10px 16px;border-bottom:1px solid #1a1a1a}
+.compare-table td{padding:10px 16px;border-bottom:1px solid #111;color:#666}
+.compare-table td:first-child{color:#ccc;font-weight:500}
+.compare-table tr:hover td{background:#0e0e0e}
+
+/* Architecture */
+.arch-flow{display:flex;flex-direction:column;gap:0;margin-top:32px;max-width:500px}
+.arch-node{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px}
+.arch-node .a-icon{font-size:22px;flex-shrink:0}
+.arch-node .a-name{font-size:14px;font-weight:600;color:#ccc}
+.arch-node .a-desc{font-size:11px;color:#444;margin-top:2px}
+.arch-node .a-tag{margin-left:auto;font-size:10px;padding:3px 10px;border-radius:10px;font-weight:600;flex-shrink:0}
+.tag-local{background:#1a1a2e;color:#6366f1}
+.tag-cloud{background:#1a2a1a;color:#22c55e}
+.arch-arrow{padding:2px 0 2px 30px;font-size:11px;color:#333;display:flex;align-items:center;gap:8px}
+.arch-arrow .arr{font-size:16px;color:#2a2a2a}
+.arch-arrow.safe .arr{color:#22c55e}
+.arch-arrow.safe span{color:#22c55e;font-weight:600}
+
+/* WhatsApp demo section */
+.whatsapp-section{background:#050505;border-top:1px solid #111;border-bottom:1px solid #111}
+.wa-layout{display:flex;align-items:flex-start;gap:48px;margin-top:40px}
+.phone-wrap{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:14px}
+.phone-label{font-size:10px;color:#333;text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+.phone{width:300px;background:#1a1a1a;border-radius:36px;border:2px solid #2a2a2a;overflow:hidden;box-shadow:0 40px 80px rgba(0,0,0,.6)}
+.phone-notch{background:#111;height:28px;display:flex;align-items:center;justify-content:center;position:relative}
+.notch-pill{width:80px;height:20px;background:#0a0a0a;border-radius:10px}
+.phone-time{position:absolute;left:16px;font-size:11px;font-weight:600;color:#fff}
+.phone-signal{position:absolute;right:16px;font-size:10px;color:#fff}
+.wa-header{background:#1f2c34;padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #2a3942}
+.wa-back{color:#00a884;font-size:18px}
+.wa-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.wa-name{font-size:14px;font-weight:600;color:#e9edef}
+.wa-status{font-size:11px;color:#8696a0;margin-top:1px}
+.wa-icons{margin-left:auto;display:flex;gap:16px;color:#aebac1;font-size:16px}
+.wa-chat{background:#0b141a;padding:12px 10px;min-height:420px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:420px;background-image:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
+.date-chip{text-align:center;font-size:11px;color:#8696a0;background:#182229;border-radius:8px;padding:4px 10px;align-self:center}
+.msg-out{align-self:flex-end;background:#005c4b;color:#e9edef;padding:8px 12px;border-radius:12px 12px 3px 12px;font-size:13px;max-width:220px;line-height:1.5}
+.msg-in{align-self:flex-start;background:#1f2c34;color:#e9edef;padding:8px 12px;border-radius:3px 12px 12px 12px;font-size:13px;max-width:240px;line-height:1.5}
+.msg-time{font-size:10px;color:#8696a0;text-align:right;margin-top:3px}
+.msg-out .msg-time{color:#8fad9a}
+.tick{color:#53bdeb}
+.source-pill{display:inline-flex;align-items:center;gap:4px;background:#2a3942;border-radius:10px;padding:3px 8px;font-size:10px;color:#8696a0;margin-top:5px}
+.status-line{align-self:center;font-size:10px;color:#8696a0;background:#182229;border-radius:8px;padding:3px 10px;font-style:italic}
+.typing{align-self:flex-start;background:#1f2c34;border-radius:3px 12px 12px 12px;padding:10px 14px;display:flex;gap:4px;align-items:center}
+.typing span{width:6px;height:6px;background:#8696a0;border-radius:50%;animation:bounce 1.2s infinite}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+.wa-input-bar{background:#1f2c34;padding:8px 10px;display:flex;align-items:center;gap:8px;border-top:1px solid #2a3942}
+.wa-input{flex:1;background:#2a3942;border-radius:20px;padding:8px 14px;font-size:13px;color:#e9edef;border:none}
+.wa-mic{width:36px;height:36px;background:#00a884;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px}
+
+/* Privacy box */
+.privacy-box{background:#0e1a0e;border:1px solid #1a3a1a;border-radius:10px;padding:16px 18px}
+.privacy-box .pb-title{font-size:11px;font-weight:600;color:#22c55e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.pb-row{display:flex;align-items:center;gap:10px;font-size:12px;color:#aaa;margin-bottom:6px}
+.pb-row:last-child{margin-bottom:0}
+.pb-ok{color:#22c55e}
+.pb-warn{color:#f59e0b}
+
+/* Scenarios */
+.scenario-grid{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.scenario{background:#111;border:1px solid #1a1a1a;border-radius:9px;padding:12px 14px}
+.scenario .sc-q{font-size:12px;color:#888;margin-bottom:5px}
+.scenario .sc-q strong{color:#005c4b}
+.scenario .sc-a{font-size:12px;color:#555;line-height:1.5}
+.scenario .sc-a strong{color:#6366f1}
+.scenario .sc-src{font-size:10px;color:#333;margin-top:5px}
+
+/* Quick start */
+.quickstart{background:#050505;border-top:1px solid #111;border-bottom:1px solid #111}
+pre{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:18px 22px;font-size:13px;color:#aaa;overflow-x:auto;line-height:1.6;font-family:'SF Mono',Menlo,monospace}
+pre .comment{color:#444}
+
+/* Models */
+.model-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:32px}
+.model-card{background:#111;border:1px solid #1a1a1a;border-radius:10px;padding:16px}
+.model-card h4{font-size:13px;font-weight:600;color:#ccc;margin-bottom:4px}
+.model-card p{font-size:11px;color:#555;line-height:1.5}
+.model-card .model-tag{font-size:10px;background:#1a1a2e;color:#6366f1;padding:2px 8px;border-radius:6px;display:inline-block;margin-top:6px}
+
+/* Footer */
+.site-footer{border-top:1px solid #111;padding:40px 24px;text-align:center}
+.site-footer p{font-size:12px;color:#333;line-height:1.8}
+.site-footer a{color:#555}
+
+/* Responsive */
+@media(max-width:768px){
+  .hero .section-title{font-size:32px}
+  .features-grid{grid-template-columns:1fr}
+  .wa-layout{flex-direction:column;align-items:center}
+  .wa-right-panel{width:100%;max-width:360px}
+  .model-grid{grid-template-columns:1fr}
+  .compare-table{font-size:12px}
+  .compare-table th,.compare-table td{padding:8px 10px}
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-logo">Vault<span>Mind</span></div>
+  <div class="nav-links">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How It Works</a>
+    <a href="#whatsapp">WhatsApp</a>
+    <a href="#models">Models</a>
+    <a href="https://github.com/airblackbox/VaultMind" class="nav-cta" target="_blank">GitHub</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-badges">
+    <div class="hero-badge"><span class="dot"></span> 100% Local</div>
+    <div class="hero-badge">Apache 2.0</div>
+    <div class="hero-badge">v0.5.0</div>
+  </div>
+  <h1 class="section-title">Chat with your docs, email, and the web — on your machine.</h1>
+  <p class="section-sub">No API keys. No cloud. No subscription. Your documents stay on your hardware. The AI runs on your hardware. Nothing leaves your machine.</p>
+  <div class="hero-actions">
+    <a href="https://github.com/airblackbox/VaultMind" class="btn-primary" target="_blank">Get Started</a>
+    <a href="#whatsapp" class="btn-secondary">See WhatsApp Demo</a>
+  </div>
+  <img src="screenshot.png" alt="VaultMind screenshot" class="hero-screenshot" loading="lazy">
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="section-label">Features</div>
+  <h2 class="section-title">Everything runs locally</h2>
+  <p class="section-sub">Drop in files, connect your email, search the web — all processed on your machine with your choice of local AI model.</p>
+  <div class="features-grid">
+    <div class="feat-card">
+      <div class="feat-icon">📄</div>
+      <h3>Drop in any file</h3>
+      <p>PDF, DOCX, TXT, Markdown, CSV. Drag it in, ask questions across all of it instantly.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🔗</div>
+      <h3>Paste any URL</h3>
+      <p>Job postings, research papers, competitor pages — VaultMind fetches and indexes them on the fly.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">📧</div>
+      <h3>Gmail integration</h3>
+      <p>OAuth into your inbox. Emails are indexed locally. Ask "what did my lawyer say about the contract?"</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">📝</div>
+      <h3>Notion sync</h3>
+      <p>Paste your integration token and your workspace syncs automatically on a configurable schedule.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🌐</div>
+      <h3>Agent mode</h3>
+      <p>Combines your private vault with live DuckDuckGo web search when your docs can't answer alone.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🕵️</div>
+      <h3>Staffing agency intel</h3>
+      <p>Paste a staffing agency URL — VaultMind deep-scrapes listings and identifies hidden client companies.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Comparison -->
+<section>
+  <div class="section-label">Why VaultMind</div>
+  <h2 class="section-title">No cloud. No compromise.</h2>
+  <table class="compare-table">
+    <tr><th></th><th>VaultMind</th><th>ChatGPT / Claude</th><th>PrivateGPT</th><th>Obsidian Copilot</th></tr>
+    <tr><td>100% local</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td></tr>
+    <tr><td>Gmail integration</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+    <tr><td>Live web search</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+    <tr><td>One-command setup</td><td>✅</td><td>✅</td><td>❌</td><td>❌</td></tr>
+    <tr><td>No API key needed</td><td>✅</td><td>❌</td><td>✅</td><td>❌</td></tr>
+    <tr><td>Electron Mac app</td><td>✅</td><td>—</td><td>❌</td><td>❌</td></tr>
+    <tr><td>WhatsApp access</td><td>✅</td><td>❌</td><td>❌</td><td>❌</td></tr>
+  </table>
+</section>
+
+<!-- How it works -->
+<section id="how-it-works">
+  <div class="section-label">Architecture</div>
+  <h2 class="section-title">How it works</h2>
+  <p class="section-sub">Everything stays on your machine. FastAPI backend, ChromaDB vectors on disk, Ollama for inference. Zero external calls.</p>
+  <div class="arch-flow">
+    <div class="arch-node"><div class="a-icon">📄</div><div><div class="a-name">Files / URLs / Gmail / Notion</div><div class="a-desc">Your data sources</div></div></div>
+    <div class="arch-arrow safe"><span class="arr">↓</span><span>local extraction</span></div>
+    <div class="arch-node"><div class="a-icon">✂️</div><div><div class="a-name">Text extraction + chunking</div><div class="a-desc">pypdf, python-docx, BS4 — 150 word chunks</div></div><div class="a-tag tag-local">local</div></div>
+    <div class="arch-arrow safe"><span class="arr">↓</span><span>embed locally</span></div>
+    <div class="arch-node"><div class="a-icon">🧮</div><div><div class="a-name">nomic-embed-text</div><div class="a-desc">Local embeddings via Ollama</div></div><div class="a-tag tag-local">local</div></div>
+    <div class="arch-arrow safe"><span class="arr">↓</span><span>stored on disk</span></div>
+    <div class="arch-node"><div class="a-icon">💾</div><div><div class="a-name">ChromaDB</div><div class="a-desc">Vector database on your SSD</div></div><div class="a-tag tag-local">local</div></div>
+    <div class="arch-arrow safe"><span class="arr">↓</span><span>top-k similarity search</span></div>
+    <div class="arch-node"><div class="a-icon">🧠</div><div><div class="a-name">Ollama (your choice of model)</div><div class="a-desc">Local inference — no API key, no cloud</div></div><div class="a-tag tag-local">local</div></div>
+    <div class="arch-arrow safe"><span class="arr">↓</span><span>streamed answer</span></div>
+    <div class="arch-node"><div class="a-icon">💬</div><div><div class="a-name">Your answer</div><div class="a-desc">Streamed via SSE to the browser</div></div><div class="a-tag tag-local">local</div></div>
+  </div>
+</section>
+
+<!-- WhatsApp Demo -->
+<section id="whatsapp" class="whatsapp-section">
+  <div style="max-width:1100px;margin:0 auto">
+    <div class="section-label">New in v0.5</div>
+    <h2 class="section-title">VaultMind × WhatsApp</h2>
+    <p class="section-sub">Your private document vault, accessible from any messaging app via OpenClaw. The documents never leave your machine. You just ask — from anywhere.</p>
+
+    <div class="wa-layout">
+      <!-- Phone mockup -->
+      <div class="phone-wrap">
+        <div class="phone-label">Your Phone</div>
+        <div class="phone">
+          <div class="phone-notch">
+            <span class="phone-time">9:41</span>
+            <div class="notch-pill"></div>
+            <span class="phone-signal">●●●</span>
+          </div>
+          <div class="wa-header">
+            <span class="wa-back">‹</span>
+            <div class="wa-avatar">🔒</div>
+            <div>
+              <div class="wa-name">VaultMind</div>
+              <div class="wa-status">🟢 online · local AI</div>
+            </div>
+            <div class="wa-icons"><span>📞</span><span>⋮</span></div>
+          </div>
+          <div class="wa-chat">
+            <div class="date-chip">Today</div>
+            <div class="msg-out">What are the payment terms in my contract with Acme Corp?<div class="msg-time">9:31 <span class="tick">✓✓</span></div></div>
+            <div class="status-line">🔍 Searching vault...</div>
+            <div class="msg-in">Net-30 from invoice date. Late fees of 1.5% per month after 45 days. Payment via ACH or wire only — no checks.<div class="source-pill">📄 acme_contract_2025.pdf</div><div class="msg-time">9:31</div></div>
+            <div class="msg-out">What was my website CTR last month?<div class="msg-time">9:44 <span class="tick">✓✓</span></div></div>
+            <div class="status-line">🔍 Searching vault...</div>
+            <div class="msg-in">0.6% CTR — down from 1.1% the prior month. Google is showing the site more (impressions doubled) but clicks stayed flat. Meta descriptions were flagged as too generic.<div class="source-pill">📝 website_audit_2026.md</div><div class="msg-time">9:44</div></div>
+
+            <div class="msg-out">What's the going rate for a senior data engineer in LA right now?<div class="msg-time">9:52 <span class="tick">✓✓</span></div></div>
+            <div class="status-line">🔍 Vault + web search...</div>
+            <div class="msg-in">Based on your indexed job data and current listings: $155K–$185K base in LA for senior level. Roles at Anduril and The RealReal are posting $165K+. Contract rates running $85–$110/hr.<div class="source-pill">🌐 builtinla.com · greenhouse.io</div><div class="msg-time">9:53</div></div>
+
+            <div class="typing"><span></span><span></span><span></span></div>
+          </div>
+          <div class="wa-input-bar">
+            <div class="wa-input">Message</div>
+            <div class="wa-mic">🎤</div>
+          </div>
+        </div>
+        <div class="phone-label" style="color:#222;font-size:10px">Questions travel via WhatsApp · Docs stay on your Mac</div>
+      </div>
+
+      <!-- Right panel -->
+      <div class="wa-right-panel" style="flex:1;display:flex;flex-direction:column;gap:20px">
+        <!-- Flow diagram -->
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#333;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">How it connects</div>
+          <div class="arch-flow">
+            <div class="arch-node"><div class="a-icon">📱</div><div><div class="a-name">Your Phone (WhatsApp)</div><div class="a-desc">You type a question</div></div><div class="a-tag tag-cloud">cloud</div></div>
+            <div class="arch-arrow" style="color:#ef4444"><span class="arr" style="color:#ef4444">↓</span><span style="color:#ef4444;font-size:10px;font-weight:600">⚠ Question travels through Meta servers</span></div>
+            <div class="arch-node"><div class="a-icon">🦞</div><div><div class="a-name">OpenClaw Gateway</div><div class="a-desc">Running on your Mac Mini · routes to skills</div></div><div class="a-tag tag-local">local</div></div>
+            <div class="arch-arrow safe"><span class="arr">↓</span><span>✓ localhost only from here</span></div>
+            <div class="arch-node"><div class="a-icon">🔒</div><div><div class="a-name">VaultMind API</div><div class="a-desc">localhost:8000/query · your docs, your index</div></div><div class="a-tag tag-local">local</div></div>
+            <div class="arch-arrow safe"><span class="arr">↓</span><span>✓ never leaves your machine</span></div>
+            <div class="arch-node"><div class="a-icon">🧠</div><div><div class="a-name">Ollama (local inference)</div><div class="a-desc">No API key · no cloud · your hardware</div></div><div class="a-tag tag-local">local</div></div>
+          </div>
+        </div>
+
+        <!-- Privacy breakdown -->
+        <div class="privacy-box">
+          <div class="pb-title">Privacy breakdown</div>
+          <div class="pb-row pb-ok"><span>✅</span> Your documents never leave your machine</div>
+          <div class="pb-row pb-ok"><span>✅</span> AI inference is 100% local (Ollama)</div>
+          <div class="pb-row pb-ok"><span>✅</span> Vector database stored on disk, not cloud</div>
+          <div class="pb-row pb-warn"><span>⚠️</span> Questions + answers pass through WhatsApp</div>
+          <div class="pb-row" style="color:#333;font-size:11px;padding-left:24px">For sensitive queries, use VaultMind directly at localhost</div>
+        </div>
+
+        <!-- Scenarios -->
+        <div>
+          <div style="font-size:11px;font-weight:600;color:#333;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">What you can ask</div>
+          <div class="scenario-grid">
+            <div class="scenario">
+              <div class="sc-q"><strong>You:</strong> "What did I agree to in the NDA with Stripe?"</div>
+              <div class="sc-a"><strong>VaultMind:</strong> Answers from your indexed NDA. Zero hallucination.</div>
+              <div class="sc-src">Source: nda_stripe_2024.pdf</div>
+            </div>
+            <div class="scenario">
+              <div class="sc-q"><strong>You:</strong> "What's my warranty on the Mac Mini?"</div>
+              <div class="sc-a"><strong>VaultMind:</strong> Pulls from your indexed Apple receipt or support doc.</div>
+              <div class="sc-src">Source: apple_receipt_jan2026.pdf</div>
+            </div>
+            <div class="scenario">
+              <div class="sc-q"><strong>You:</strong> "Who's hiring data engineers in Irvine right now?"</div>
+              <div class="sc-a"><strong>VaultMind:</strong> Vault + web search. Returns indexed job data + live results.</div>
+              <div class="sc-src">Source: vault + DuckDuckGo</div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /wa-right-panel -->
+    </div><!-- /wa-layout -->
+  </div>
+</section>
+
+<!-- Models -->
+<section id="models">
+  <div class="section-label">Local AI</div>
+  <h2 class="section-title">Your choice of model</h2>
+  <p class="section-sub">Switch models any time from the sidebar. All run locally via Ollama — no API keys, no usage limits.</p>
+  <div class="model-grid">
+    <div class="model-card"><h4>Mistral 7B</h4><p>Fast, good all-rounder. Great for everyday questions.</p><div class="model-tag">default</div></div>
+    <div class="model-card"><h4>Llama 3.1 8B</h4><p>Strong reasoning. Best balance of speed and intelligence.</p><div class="model-tag">recommended</div></div>
+    <div class="model-card"><h4>Llama 3.2 3B</h4><p>Lightweight and fast. Great on older hardware.</p><div class="model-tag">lightweight</div></div>
+    <div class="model-card"><h4>DeepSeek R1</h4><p>Best for complex analysis and multi-step reasoning.</p><div class="model-tag">advanced</div></div>
+    <div class="model-card"><h4>Qwen 2.5</h4><p>Strong on technical content and code questions.</p><div class="model-tag">technical</div></div>
+    <div class="model-card"><h4>Gemma 2</h4><p>Google's open model. Good general purpose.</p><div class="model-tag">versatile</div></div>
+  </div>
+</section>
+
+<!-- Quick Start -->
+<section class="quickstart" id="quickstart">
+  <div style="max-width:1100px;margin:0 auto">
+    <div class="section-label">Get started</div>
+    <h2 class="section-title">One command. Five minutes.</h2>
+    <p class="section-sub" style="margin-bottom:28px">Prerequisite: <a href="https://ollama.ai/download" target="_blank">Ollama</a> installed and running.</p>
+    <pre><span class="comment"># Clone and run</span>
+git clone https://github.com/airblackbox/VaultMind.git
+cd VaultMind
+bash start.sh
+
+<span class="comment"># Or use Docker (no Ollama install required)</span>
+docker compose up</pre>
+    <p style="font-size:13px;color:#444;margin-top:16px;line-height:1.7"><code style="background:#111;padding:2px 6px;border-radius:4px;color:#888">start.sh</code> pulls the models (~4.5 GB, one-time), installs Python deps, starts the backend, and opens <code style="background:#111;padding:2px 6px;border-radius:4px;color:#888">http://localhost:8000</code>.</p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="site-footer">
+  <p>Built by <a href="https://github.com/airblackbox" target="_blank">Jason Shotwell</a>. Part of the <a href="https://airblackbox.ai" target="_blank">AIR Blackbox</a> ecosystem.</p>
+  <p style="margin-top:8px">Apache 2.0 · <a href="https://github.com/airblackbox/VaultMind" target="_blank">GitHub</a></p>
+</footer>
+
+</body>
+</html>
