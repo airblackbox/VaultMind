@@ -13,6 +13,7 @@ const { app, BrowserWindow, dialog, shell } = require('electron');
 const { spawn, execSync }                    = require('child_process');
 const path                                   = require('path');
 const http                                   = require('http');
+const https                                  = require('https');
 const fs                                     = require('fs');
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -269,6 +270,61 @@ async function createMainWindow() {
   await mainWindow.loadURL(`http://127.0.0.1:${PORT}`);
 }
 
+// ── Auto-update check ────────────────────────────────────────────────────────
+
+/**
+ * Silently checks GitHub Releases for a newer version.
+ * If found, shows a dialog offering to open the download page.
+ * Works on Mac (unsigned) and Windows — no code signing required.
+ */
+function checkForUpdates() {
+  const options = {
+    hostname: 'api.github.com',
+    path:     '/repos/airblackbox/VaultMind/releases/latest',
+    headers:  { 'User-Agent': 'VaultMind-App' },
+    timeout:  8000,
+  };
+
+  const req = https.get(options, (res) => {
+    let body = '';
+    res.on('data', chunk => { body += chunk; });
+    res.on('end', () => {
+      try {
+        const data          = JSON.parse(body);
+        const latestTag     = (data.tag_name  || '').replace(/^v/, '');  // e.g. "0.2.0"
+        const currentVer    = app.getVersion();                           // from package.json
+
+        if (!latestTag || latestTag === currentVer) return; // already up to date
+
+        // Simple semver comparison — just compare the strings numerically
+        const newer = latestTag.split('.').map(Number);
+        const curr  = currentVer.split('.').map(Number);
+        const isNewer = newer.some((n, i) => n > (curr[i] || 0));
+        if (!isNewer) return;
+
+        // Show non-blocking update dialog
+        dialog.showMessageBox(mainWindow, {
+          type:    'info',
+          title:   'Update Available',
+          message: `VaultMind v${latestTag} is ready`,
+          detail:  `You're on v${currentVer}. Download the latest version from GitHub?`,
+          buttons: ['Download Update', 'Later'],
+          defaultId: 0,
+          cancelId:  1,
+        }).then(({ response }) => {
+          if (response === 0) {
+            shell.openExternal(`https://github.com/airblackbox/VaultMind/releases/tag/v${latestTag}`);
+          }
+        });
+
+      } catch (_) { /* ignore parse errors */ }
+    });
+  });
+
+  req.on('error',   () => { /* ignore network errors — no internet, no update check */ });
+  req.on('timeout', () => { req.destroy(); });
+}
+
 // ── App initialization ───────────────────────────────────────────────────────
 
 async function initialize() {
@@ -300,6 +356,10 @@ async function initialize() {
     // Step 5: Open the app
     setLoadingStatus('Ready!', 100);
     await createMainWindow();
+
+    // Check for updates in the background — 5 second delay so it doesn't
+    // interrupt the initial load experience
+    setTimeout(checkForUpdates, 5000);
 
   } catch (err) {
     if (loadingWindow && !loadingWindow.isDestroyed()) loadingWindow.close();
