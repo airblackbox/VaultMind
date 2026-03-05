@@ -1127,6 +1127,7 @@ class ChatMessage(BaseModel):
     model:         str = "mistral"
     pinned_source: str = ""   # when set, restrict retrieval to this exact source
     skill:         str = ""   # optional skill context injected into system prompt
+    custom_prompt: str = ""   # free-form system prompt from the prompts marketplace
 
 EMAIL_KEYWORDS = {"email", "emails", "inbox", "gmail", "mail", "summarize my day",
                   "what did i get", "any messages", "any emails", "check my email"}
@@ -1160,7 +1161,9 @@ async def chat(msg: ChatMessage):
     sources  = list(set(m["source"] for m in results["metadatas"][0]))
 
     skill_block = ""
-    if msg.skill and msg.skill in SKILL_PROMPTS:
+    if msg.skill == "__custom__" and msg.custom_prompt:
+        skill_block = f"\n\n{msg.custom_prompt}"
+    elif msg.skill and msg.skill in SKILL_PROMPTS:
         skill_block = f"\n\n{SKILL_PROMPTS[msg.skill]}"
 
     messages = [
@@ -1173,7 +1176,7 @@ async def chat(msg: ChatMessage):
                 "2. ONLY use information literally present in the documents below.\n"
                 "3. If the answer isn't in the documents, say so clearly.\n"
                 "4. Be concise and direct.\n"
-                "5. Write in plain prose only. NO markdown — no bold, no headers, no bullet dashes.\n\n"
+                "5. Use markdown formatting where helpful (headers, bold, bullet lists, code blocks).\n\n"
                 f"INDEXED DOCUMENTS:\n{context}"
                 f"{skill_block}"
             )
