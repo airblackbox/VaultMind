@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 from ddgs import DDGS
 from datetime import datetime, timezone
 from urllib.parse import urlparse
+from company_intel import analyze_agency_listings
 
 # Optional Pillow for EXIF
 try:
@@ -1644,14 +1645,10 @@ async def chat(msg: ChatMessage):
             # Agency mode: build detailed job descriptions for client ID
             if is_agency_mode and agency_job_details:
                 mode = "agency"  # Special mode for agency client identification
-                agency_text = "STAFFING AGENCY JOB LISTINGS (full descriptions scraped from individual pages):\n"
-                for i, entry in enumerate(agency_job_details, 1):
-                    agency_text += f"\n{'='*60}\nJOB #{i}\n"
-                    agency_text += f"Title: {entry['title']}\n"
-                    agency_text += f"URL: {entry['url']}\n"
-                    if entry.get('description'):
-                        agency_text += f"Full Description:\n{entry['description']}\n"
-                sections.append(agency_text)
+                yield f"data: {json.dumps({'status': '🧠 Analyzing clues & identifying clients…'})}\n\n"
+                # Run the Python intelligence engine — does the heavy reasoning
+                intel_report = analyze_agency_listings(agency_job_details)
+                sections.append(intel_report)
 
             elif structured_listings:
                 # Deduplicate listings by URL
@@ -1696,29 +1693,20 @@ async def chat(msg: ChatMessage):
         # ── Build system prompt ─────────────────────────────────
         if mode == "agency":
             system_prompt = (
-                "You are a recruiting intelligence analyst. The user provided a staffing agency's job board.\n"
-                "I have scraped each individual job listing page and provided the FULL job descriptions below.\n\n"
-                "YOUR TASK — Analyze each job description and identify the HIDDEN CLIENT COMPANY:\n\n"
-                "For EACH job listing, output:\n"
-                "1. **Job Title** (from the listing)\n"
-                "2. **Likely Client Company** — Use these clues from the description to identify or guess the client:\n"
-                "   - Industry mentions ('medical device maker', 'fintech startup', 'enterprise SaaS')\n"
-                "   - Location clues ('South Orange County', 'based in Los Alamitos')\n"
-                "   - Company size hints ('one of the largest', 'Fortune 500', 'venture-backed')\n"
-                "   - Product/service clues ('optical surgery space', 'creator monetization platform')\n"
-                "   - Tech stack patterns (specific combos that narrow it down)\n"
-                "   - Any other identifying details\n"
-                "3. **Confidence** — High / Medium / Low based on how specific the clues are\n"
-                "4. **Key Clues** — Quote the exact phrases from the description that led to your guess\n"
-                "5. **Job URL** — Copy EXACTLY from the data, never fabricate\n\n"
-                "RULES:\n"
-                "- If you can identify the company with high confidence, name it\n"
-                "- If you can narrow it to 2-3 possibilities, list them all\n"
-                "- If you can only identify the industry/type, say that\n"
-                "- NEVER make up a company name without evidence from the description\n"
-                "- Use markdown formatting with numbered results\n"
-                "- Group results by confidence level (High first, then Medium, then Low)\n\n"
-                f"SCRAPED JOB LISTINGS:\n{'---'.join(sections)}"
+                "You are a recruiting intelligence formatter. An automated system has already analyzed "
+                "staffing agency job listings and identified likely client companies.\n\n"
+                "YOUR ONLY JOB: Format the pre-analyzed report below into a clean, readable markdown response.\n\n"
+                "FORMATTING RULES:\n"
+                "1. Present each job as a numbered entry with the job title as a bold header\n"
+                "2. Show the BEST GUESS company name prominently\n"
+                "3. List the key clues that led to the identification\n"
+                "4. Include the job URL exactly as provided — NEVER change or fabricate URLs\n"
+                "5. Group jobs by the identified client company when multiple jobs point to the same client\n"
+                "6. Add a summary at the end listing all unique client companies found\n"
+                "7. DO NOT add any analysis of your own — just format what's already been analyzed\n"
+                "8. DO NOT make up company names that aren't in the report\n"
+                "9. If the report says 'Unknown' or 'insufficient clues', say exactly that\n\n"
+                f"PRE-ANALYZED REPORT TO FORMAT:\n{'---'.join(sections)}"
                 f"{skill_block}"
             )
         elif mode == "web":
