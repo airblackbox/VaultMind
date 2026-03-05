@@ -1204,6 +1204,13 @@ async def delete_conversation(conv_id: str):
 
 import re as _re
 
+# ── URL detection in user messages ──────────────────────────────
+_URL_RE = _re.compile(r'https?://[^\s<>"\']+', _re.IGNORECASE)
+
+def _extract_urls(text: str) -> list[str]:
+    """Pull any URLs the user pasted into their message."""
+    return _URL_RE.findall(text)
+
 # Keywords that signal the user wants real web results, not doc search
 _WEB_INTENT_PATTERNS = [
     r"\bfind\b.*\b(companies|jobs|hiring|openings|positions|listings)\b",
@@ -1215,12 +1222,127 @@ _WEB_INTENT_PATTERNS = [
     r"\breal urls?\b",
     r"\b(top \d+|best \d+|find \d+|list \d+)\b",
     r"\b(salary|compensation|pay range|glassdoor)\b.*\b(for|at|in)\b",
+    r"https?://",  # If user pastes a URL, always do web mode
 ]
 _WEB_INTENT_RE = _re.compile("|".join(_WEB_INTENT_PATTERNS), _re.IGNORECASE)
 
 def _looks_like_web_search(query: str) -> bool:
     """Heuristic: does this query want live web data?"""
     return bool(_WEB_INTENT_RE.search(query))
+
+# ── Structured job listing extraction ───────────────────────────
+def _extract_job_listings(html_content: bytes, base_url: str) -> list[dict]:
+    """Parse a job listing page and extract structured entries.
+    Returns list of {title, company, location, url}."""
+    soup = BeautifulSoup(html_content, "html.parser")
+    listings = []
+    seen = set()
+    base_domain = urlparse(base_url).scheme + "://" + urlparse(base_url).netloc
+
+    # Strategy 1: Look for links that point to individual job pages
+    # Common patterns: /job/, /jobs/, /position/, /opening/, /career/
+    job_link_re = _re.compile(r'/(job|jobs|position|opening|career|role|apply|req|posting)s?/', _re.IGNORECASE)
+
+    for a_tag in soup.find_all("a", href=True):
+        href = a_tag["href"].strip()
+        if not href or href == "#":
+            continue
+
+        # Make absolute URL
+        if href.startswith("/"):
+            href = base_domain + href
+        elif not href.startswith("http"):
+            continue
+
+        # Skip if blocked or already seen
+        if _is_blocked_url(href) or href in seen:
+            continue
+
+        # Check if this looks like a job link
+        is_job_link = bool(job_link_re.search(href))
+        link_text = a_tag.get_text(strip=True)
+
+        if not link_text or len(link_text) < 5 or len(link_text) > 200:
+            continue
+
+        # Look for company name in nearby elements
+        company = ""
+        parent = a_tag.parent
+        if parent:
+            # Check siblings and parent for company-like text
+            for sibling in parent.find_all(string=True):
+                txt = sibling.strip()
+                if txt and txt != link_text and 5 < len(txt) < 80:
+                    company = txt
+                    break
+
+        # Look for location
+        location = ""
+        loc_el = parent.find(string=_re.compile(r'(CA|California|Irvine|Remote|San|Los|New York)', _re.IGNORECASE)) if parent else None
+        if loc_el:
+            location = loc_el.strip()
+
+        if is_job_link or (link_text and any(kw in link_text.lower() for kw in ["engineer", "developer", "analyst", "manager", "scientist", "designer", "lead", "senior", "junior", "intern"])):
+            seen.add(href)
+            listings.append({
+                "title": link_text,
+                "company": company,
+                "location": location,
+                "url": href,
+            })
+
+    # Strategy 2: Look for common job card patterns (divs with class containing 'job', 'posting', 'listing')
+    if len(listings) < 3:
+        card_re = _re.compile(r'(job|posting|listing|position|opening|result|card)', _re.IGNORECASE)
+        for div in soup.find_all(["div", "li", "article"], class_=card_re):
+            link = div.find("a", href=True)
+            if not link:
+                continue
+            href = link["href"].strip()
+            if href.startswith("/"):
+                href = base_domain + href
+            elif not href.startswith("http"):
+                continue
+            if href in seen or _is_blocked_url(href):
+                continue
+            title = link.get_text(strip=True)
+            if not title or len(title) < 5:
+                continue
+
+            # Try to find company name in the card
+            company = ""
+            company_el = div.find(class_=_re.compile(r'(company|employer|org)', _re.IGNORECASE))
+            if company_el:
+                company = company_el.get_text(strip=True)
+
+            seen.add(href)
+            listings.append({
+                "title": title,
+                "company": company,
+                "location": "",
+                "url": href,
+            })
+
+    return listings[:30]  # Cap at 30
+
+def _extract_companies_from_text(text: str) -> list[str]:
+    """Extract company names from scraped text using heuristics.
+    Looks for patterns like 'at CompanyName', 'Company: X', capitalized names near job keywords."""
+    companies = set()
+
+    # Pattern: "at <Company>"
+    for m in _re.finditer(r'\bat\s+([A-Z][A-Za-z0-9\s&.,]+?)(?:\s*[-–—|•]\s*|\s+in\s+|\s*\n)', text):
+        name = m.group(1).strip().rstrip(".,")
+        if 2 < len(name) < 60 and not any(w in name.lower() for w in ["the", "this", "that", "your", "our"]):
+            companies.add(name)
+
+    # Pattern: "Company: <Name>" or "Employer: <Name>"
+    for m in _re.finditer(r'(?:company|employer|client|organization|posted by)[:\s]+([A-Z][A-Za-z0-9\s&.,]+?)(?:\s*[-–—|•]\s*|\s*\n)', text, _re.IGNORECASE):
+        name = m.group(1).strip().rstrip(".,")
+        if 2 < len(name) < 60:
+            companies.add(name)
+
+    return list(companies)[:20]
 
 RELEVANCE_THRESHOLD = 0.75   # ChromaDB distance; lower = more similar
 
@@ -1279,47 +1401,148 @@ async def chat(msg: ChatMessage):
         # ── Web search ──────────────────────────────────────────
         if use_web:
             mode = "hybrid" if use_vault else "web"
+            user_urls = _extract_urls(msg.message)
+            structured_listings = []  # Pre-extracted job listings
+            web_context = ""
+            scraped = 0
+            seen_domains = set()
+            seen_urls = set()
+
+            # ── Phase A: Scrape any URLs the user explicitly provided ──
+            if user_urls:
+                yield f"data: {json.dumps({'status': '🔗 Fetching the URL you provided…'})}\n\n"
+                for u_url in user_urls[:3]:  # Max 3 user URLs
+                    if _is_blocked_url(u_url) or u_url in seen_urls:
+                        continue
+                    seen_urls.add(u_url)
+                    domain = urlparse(u_url).netloc
+                    seen_domains.add(domain)
+                    yield f"data: {json.dumps({'status': f'📄 Reading: {domain}…'})}\n\n"
+                    try:
+                        r = requests.get(u_url, timeout=12, headers=BROWSER_HEADERS, stream=True)
+                        if r.status_code == 200:
+                            ctype = r.headers.get("Content-Type", "")
+                            if "html" in ctype or "text" in ctype:
+                                raw = b""
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    raw += chunk
+                                    if len(raw) > 500_000:
+                                        break
+                                # Try structured extraction first
+                                yield f"data: {json.dumps({'status': '🔎 Extracting listings…'})}\n\n"
+                                listings = _extract_job_listings(raw, u_url)
+                                if listings:
+                                    structured_listings.extend(listings)
+                                    for entry in listings:
+                                        all_sources.append(f"[{entry['title']}]({entry['url']})")
+                                # Also get text for context
+                                soup = BeautifulSoup(raw, "html.parser")
+                                for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
+                                    tag.decompose()
+                                page_text = soup.get_text(separator="\n", strip=True)[:5000]
+                                if page_text:
+                                    web_context += f"\n\n[User-provided URL]: {u_url}\n{page_text}"
+                                    all_sources.append(f"[{domain}]({u_url})")
+                                    scraped += 1
+                    except Exception as e:
+                        yield f"data: {json.dumps({'status': f'⚠️ Could not fetch: {domain}'})}\n\n"
+
+            # ── Phase B: Search the web for additional results ──
             yield f"data: {json.dumps({'status': '🔍 Searching the web…'})}\n\n"
             search_hits = multi_search(msg.message, 12)
 
             if search_hits:
-                web_context = ""
-                scraped = 0
-                seen_domains = set()
                 for hit in search_hits:
-                    if scraped >= 6:
+                    if scraped >= 8:
                         break
                     url   = hit.get("href", "")
                     title = hit.get("title", url)
                     body  = hit.get("body", "")
-                    if not url or _is_blocked_url(url):
+                    if not url or _is_blocked_url(url) or url in seen_urls:
                         continue
-                    # Deduplicate by domain — don't scrape 5 pages from same site
-                    try:
-                        from urllib.parse import urlparse
-                        domain = urlparse(url).netloc
-                    except Exception:
-                        domain = url
-                    if domain in seen_domains and scraped >= 3:
+                    seen_urls.add(url)
+                    domain = urlparse(url).netloc
+                    # Hard dedup: max 2 pages from same domain
+                    domain_count = sum(1 for d in seen_domains if d == domain)
+                    if domain_count >= 2:
                         continue
                     seen_domains.add(domain)
                     yield f"data: {json.dumps({'status': f'📄 Reading: {title[:50]}…'})}\n\n"
-                    page_text = smart_scrape(url) or body
-                    if page_text:
-                        web_context += f"\n\n[Source #{scraped+1}]: {title}\nURL: {url}\n{page_text}"
-                        all_sources.append(f"[{title}]({url})")
-                        scraped += 1
-                    elif body:
-                        web_context += f"\n\n[Source #{scraped+1}]: {title}\nURL: {url}\n{body}"
-                        all_sources.append(f"[{title}]({url})")
-                        scraped += 1
+                    try:
+                        r = requests.get(url, timeout=8, headers=BROWSER_HEADERS, stream=True)
+                        if r.status_code == 200:
+                            ctype = r.headers.get("Content-Type", "")
+                            if "html" in ctype or "text" in ctype:
+                                raw = b""
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    raw += chunk
+                                    if len(raw) > 500_000:
+                                        break
+                                # Try structured extraction on search results too
+                                listings = _extract_job_listings(raw, url)
+                                if listings:
+                                    structured_listings.extend(listings)
+                                    for entry in listings[:5]:  # Max 5 per page
+                                        if entry['url'] not in seen_urls:
+                                            seen_urls.add(entry['url'])
+                                            all_sources.append(f"[{entry['title']}]({entry['url']})")
+                                soup = BeautifulSoup(raw, "html.parser")
+                                for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
+                                    tag.decompose()
+                                page_text = soup.get_text(separator="\n", strip=True)[:3000]
+                                if page_text:
+                                    web_context += f"\n\n[Source #{scraped+1}]: {title}\nURL: {url}\n{page_text}"
+                                    all_sources.append(f"[{title}]({url})")
+                                    scraped += 1
+                            else:
+                                if body:
+                                    web_context += f"\n\n[Source #{scraped+1}]: {title}\nURL: {url}\n{body}"
+                                    all_sources.append(f"[{title}]({url})")
+                                    scraped += 1
+                        else:
+                            if body:
+                                web_context += f"\n\n[Source #{scraped+1}]: {title}\nURL: {url}\n{body}"
+                                all_sources.append(f"[{title}]({url})")
+                                scraped += 1
+                    except Exception:
+                        if body:
+                            web_context += f"\n\n[Source #{scraped+1}]: {title}\nURL: {url}\n{body}"
+                            all_sources.append(f"[{title}]({url})")
+                            scraped += 1
 
-                if web_context:
-                    sections.append(f"FROM THE WEB (real search results):\n{web_context}")
-                else:
-                    yield f"data: {json.dumps({'status': '⚠️ No web results found.'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'status': '⚠️ Web search returned nothing.'})}\n\n"
+            # ── Phase C: Build structured data block for the model ──
+            if structured_listings:
+                # Deduplicate listings by URL
+                unique_listings = []
+                listing_urls = set()
+                listing_companies = set()
+                for entry in structured_listings:
+                    url_key = entry["url"]
+                    company_key = entry.get("company", "").lower().strip()
+                    if url_key not in listing_urls:
+                        # Also skip duplicate companies (different URLs same company)
+                        if company_key and company_key in listing_companies:
+                            continue
+                        listing_urls.add(url_key)
+                        if company_key:
+                            listing_companies.add(company_key)
+                        unique_listings.append(entry)
+
+                listing_text = "STRUCTURED JOB LISTINGS EXTRACTED FROM WEB PAGES:\n"
+                for i, entry in enumerate(unique_listings[:20], 1):
+                    listing_text += f"\n{i}. Title: {entry['title']}"
+                    if entry.get('company'):
+                        listing_text += f"\n   Company: {entry['company']}"
+                    if entry.get('location'):
+                        listing_text += f"\n   Location: {entry['location']}"
+                    listing_text += f"\n   Apply URL: {entry['url']}"
+                sections.append(listing_text)
+
+            if web_context:
+                sections.append(f"FROM THE WEB (real search results):\n{web_context}")
+
+            if not web_context and not structured_listings:
+                yield f"data: {json.dumps({'status': '⚠️ No web results found.'})}\n\n"
 
         # ── No data at all ──────────────────────────────────────
         if not sections:
@@ -1333,28 +1556,29 @@ async def chat(msg: ChatMessage):
         if mode == "web":
             system_prompt = (
                 "You are a personal AI assistant with access to REAL web search results.\n\n"
-                "STRICT RULES — FOLLOW EXACTLY:\n"
-                "1. ONLY use information from the numbered search results below.\n"
-                "2. NEVER fabricate or guess URLs — only include URLs that literally appear in the sources.\n"
-                "3. NEVER make up company names, job titles, salaries, or any facts not in the sources.\n"
-                "4. Each item in a list MUST link to a DIFFERENT, UNIQUE URL. Never repeat the same URL for multiple items.\n"
-                "5. If a source is a search results page (like a Glassdoor or Indeed search), say so — do NOT pretend each company on that page has that URL.\n"
-                "6. If you can only find 5 real results with unique URLs, list 5 — do NOT pad the list with invented entries.\n"
-                "7. Format each result with its own specific URL from the sources.\n"
-                "8. If the search results don't answer the question, say 'I found limited results' and share what you have.\n"
-                "9. Use markdown formatting.\n\n"
+                "ABSOLUTE RULES — VIOLATION = FAILURE:\n"
+                "1. ONLY use information from the sources below. If data has a 'STRUCTURED JOB LISTINGS' section, use those entries as your primary answer.\n"
+                "2. NEVER fabricate or guess URLs. Copy URLs EXACTLY as they appear in 'Apply URL:' or 'URL:' fields.\n"
+                "3. NEVER make up company names, job titles, or facts not in the sources.\n"
+                "4. Each item MUST have a DIFFERENT URL. If two items would have the same URL, merge them or drop one.\n"
+                "5. If a source is a search results page, do NOT pretend each item on that page has that URL.\n"
+                "6. If you only have 5 real results, list 5. NEVER pad with invented entries.\n"
+                "7. If the user asked to analyze a specific URL, focus your answer on what was found at that URL.\n"
+                "8. When listing companies from a staffing agency page, identify the CLIENT companies (who the agency is hiring for), not the agency itself.\n"
+                "9. Use markdown formatting. Number your results.\n\n"
                 f"SEARCH RESULTS:\n{'---'.join(sections)}"
                 f"{skill_block}"
             )
         elif mode == "hybrid":
             system_prompt = (
                 "You are a personal AI assistant. You have access to the user's private documents AND real web search results.\n\n"
-                "STRICT RULES — FOLLOW EXACTLY:\n"
+                "ABSOLUTE RULES — VIOLATION = FAILURE:\n"
                 "1. ONLY use information from the sources below — never invent anything.\n"
-                "2. NEVER fabricate URLs — only include URLs that literally appear in the web results.\n"
-                "3. Each item MUST have a UNIQUE URL. Never repeat the same link for different items.\n"
-                "4. Clearly distinguish between info from private docs vs web results.\n"
-                "5. Be concise and direct. Use markdown.\n\n"
+                "2. NEVER fabricate URLs. Copy URLs EXACTLY from the sources.\n"
+                "3. Each item MUST have a UNIQUE URL. Never repeat the same link.\n"
+                "4. If a 'STRUCTURED JOB LISTINGS' section exists, use it as primary data.\n"
+                "5. Clearly distinguish between info from private docs vs web.\n"
+                "6. Be concise and direct. Use markdown.\n\n"
                 f"SOURCES:\n{'---'.join(sections)}"
                 f"{skill_block}"
             )
