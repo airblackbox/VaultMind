@@ -1,0 +1,93 @@
+name: Build & Release
+
+# Runs whenever you push a tag like v0.1.0, v1.2.3, etc.
+# Creates a GitHub Release and attaches VaultMind-mac.dmg and VaultMind-Setup.exe.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create releases and upload assets
+
+jobs:
+
+  # ── macOS: build the .dmg ────────────────────────────────────────────────
+  build-mac:
+    name: macOS (universal .dmg)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Build macOS DMG
+        run: npm run build:mac
+
+      - name: Upload VaultMind-mac.dmg to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/VaultMind-mac.dmg
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          body: |
+            ## VaultMind ${{ github.ref_name }}
+
+            Your personal AI. Local. Private. Yours.
+
+            ### Download
+            | Platform | File |
+            |----------|------|
+            | macOS (Intel + Apple Silicon) | `VaultMind-mac.dmg` |
+            | Windows 10/11 | `VaultMind-Setup.exe` |
+
+            ### First-time security bypass
+            **Mac:** Right-click the .dmg → Open, or go to System Settings → Privacy & Security → Open Anyway
+            **Windows:** Click "More info" → "Run anyway" on the SmartScreen prompt
+
+            ### Requirements
+            - [Ollama](https://ollama.ai/download) installed and running
+            - Python 3.10+ (auto-detected on first launch)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Windows: build the .exe ──────────────────────────────────────────────
+  build-win:
+    name: Windows (NSIS .exe)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm install
+
+      - name: Build Windows installer
+        run: npm run build:win
+
+      - name: Upload VaultMind-Setup.exe to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/VaultMind-Setup.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

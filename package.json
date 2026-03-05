@@ -1,12 +1,14 @@
 {
   "name": "vaultmind",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Your personal AI. Local. Private. Yours.",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder --mac --publish never",
-    "pack":  "electron-builder --dir"
+    "start":     "electron .",
+    "build:mac": "electron-builder --mac --publish never",
+    "build:win": "electron-builder --win --publish never",
+    "build":     "electron-builder --mac --publish never",
+    "pack":      "electron-builder --dir"
   },
   "devDependencies": {
     "electron":         "^34.0.0",
@@ -17,17 +19,36 @@
     "productName": "VaultMind",
     "copyright":   "Copyright © 2025 VaultMind",
     "asar": false,
+
     "mac": {
-      "category": "public.app-category.productivity",
+      "category":     "public.app-category.productivity",
+      "artifactName": "VaultMind-mac.${ext}",
       "target": [
         { "target": "dmg", "arch": ["universal"] }
       ]
     },
+
     "dmg": {
       "title":           "Install VaultMind",
       "backgroundColor": "#0f0f0f",
       "window":          { "width": 540, "height": 380 }
     },
+
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+
+    "nsis": {
+      "artifactName":                        "VaultMind-Setup.${ext}",
+      "oneClick":                            false,
+      "allowToChangeInstallationDirectory":  true,
+      "createDesktopShortcut":               true,
+      "createStartMenuShortcut":             true,
+      "shortcutName":                        "VaultMind"
+    },
+
     "files": [
       "main.js",
       "package.json",
