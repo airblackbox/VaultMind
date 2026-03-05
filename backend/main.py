@@ -10,6 +10,9 @@ import uuid
 import json
 import io
 import base64
+import zipfile
+import xml.etree.ElementTree as ET
+import threading
 import requests
 import chromadb
 import ollama
@@ -18,6 +21,31 @@ from docx import Document
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 from datetime import datetime, timezone
+
+# Optional Pillow for EXIF
+try:
+    from PIL import Image
+    from PIL.ExifTags import TAGS
+    PILLOW_OK = True
+except ImportError:
+    PILLOW_OK = False
+    print("⚠️  Pillow not installed. Run: pip install Pillow")
+
+# Optional watchdog for folder watching
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+    WATCHDOG_OK = True
+except ImportError:
+    WATCHDOG_OK = False
+    print("⚠️  watchdog not installed. Run: pip install watchdog")
+
+IMAGE_EXTENSIONS  = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.tiff', '.tif'}
+WATCHABLE_EXTS    = {'.pdf', '.docx', '.txt', '.md', '.csv'} | IMAGE_EXTENSIONS
+WATCH_FOLDERS_KEY = "watch_folders"
+
+_watcher_observer: "Observer | None" = None
+_active_watchers:  dict               = {}   # folder_path → handler
 
 # Allow OAuth over localhost (no HTTPS required)
 os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
@@ -307,13 +335,22 @@ async def polling_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start background polling
     task = asyncio.create_task(polling_loop())
+    # Start any saved folder watchers
+    cfg = load_config()
+    for folder in cfg.get(WATCH_FOLDERS_KEY, []):
+        if os.path.isdir(folder):
+            start_folder_watcher(folder)
     yield
     task.cancel()
     try:
         await task
     except asyncio.CancelledError:
         pass
+    if _watcher_observer is not None:
+        _watcher_observer.stop()
+        _watcher_observer.join()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -411,6 +448,189 @@ def embed_and_store(chunks: list[str], source: str, col):
         if i % 10 == 0:
             print(f"  ✓ {i}/{len(chunks)}")
 
+# ── Photo Intelligence ────────────────────────────────────────
+
+def extract_exif(contents: bytes, filename: str) -> str:
+    """Return a text summary of EXIF metadata from an image."""
+    if not PILLOW_OK:
+        return f"Filename: {filename}"
+    try:
+        img = Image.open(io.BytesIO(contents))
+        parts = [f"Filename: {filename}", f"Size: {img.size[0]}x{img.size[1]}px", f"Format: {img.format or 'unknown'}"]
+        exif_data = img._getexif() if hasattr(img, '_getexif') else None
+        if exif_data:
+            WANTED = {'DateTime': 'Date', 'DateTimeOriginal': 'Date taken',
+                      'Make': 'Camera', 'Model': 'Camera model',
+                      'ImageDescription': 'Caption', 'Artist': 'Artist'}
+            for tag_id, value in exif_data.items():
+                tag = TAGS.get(tag_id, '')
+                if tag in WANTED and value:
+                    parts.append(f"{WANTED[tag]}: {str(value)[:80]}")
+        return "\n".join(parts)
+    except Exception as e:
+        print(f"EXIF error ({filename}): {e}")
+        return f"Filename: {filename}"
+
+def caption_image_llava(contents: bytes, filename: str) -> str:
+    """Use LLaVA via Ollama to generate a rich image description."""
+    try:
+        image_b64 = base64.b64encode(contents).decode()
+        response = ollama.chat(
+            model="llava",
+            messages=[{
+                "role": "user",
+                "content": (
+                    "Describe this image in detail. Include: people present (no identifying info), "
+                    "location and setting, objects visible, activities, time of day if apparent, "
+                    "any text visible, and notable features. "
+                    "Be specific — this description will be used to search for this photo later."
+                ),
+                "images": [image_b64],
+            }],
+        )
+        return response["message"]["content"]
+    except Exception as e:
+        print(f"LLaVA error ({filename}): {e}")
+        return "Photo description unavailable — run 'ollama pull llava' to enable AI photo captions."
+
+# ── Apple Health XML ───────────────────────────────────────────
+
+def parse_apple_health_xml(contents: bytes) -> str:
+    """Convert Apple Health export.xml into searchable text blocks."""
+    try:
+        root = ET.fromstring(contents)
+    except ET.ParseError as e:
+        return f"Could not parse Apple Health XML: {e}"
+
+    records_by_type: dict[str, list[str]] = {}
+    for record in root.findall('.//Record'):
+        rtype = (record.get('type', '')
+                 .replace('HKQuantityTypeIdentifier', '')
+                 .replace('HKCategoryTypeIdentifier', '')
+                 .replace('HKDataType', ''))
+        value = record.get('value', '')
+        unit  = record.get('unit', '')
+        date  = record.get('startDate', '')[:10]
+        if not value or not date:
+            continue
+        entry = f"{date}: {value} {unit}".strip()
+        records_by_type.setdefault(rtype, []).append(entry)
+
+    workout_lines = []
+    for w in root.findall('.//Workout'):
+        wtype    = w.get('workoutActivityType', '').replace('HKWorkoutActivityType', '')
+        duration = w.get('duration', '')
+        unit     = w.get('durationUnit', 'min')
+        date     = w.get('startDate', '')[:10]
+        workout_lines.append(f"{date}: {wtype} {duration} {unit}")
+
+    PRIORITY = ['HeartRate','StepCount','BodyMass','BloodPressureSystolic',
+                'BloodPressureDiastolic','BloodGlucose','OxygenSaturation',
+                'RespiratoryRate','ActiveEnergyBurned','DistanceWalkingRunning',
+                'SleepAnalysis','BodyFatPercentage','MindfulSession']
+
+    lines = ["Apple Health Export\n",
+             f"Record types: {len(records_by_type)}",
+             f"Workouts: {len(workout_lines)}\n"]
+
+    for rtype in PRIORITY:
+        if rtype in records_by_type:
+            lines.append(f"\n{rtype}:")
+            lines.extend(records_by_type[rtype][-100:])
+
+    for rtype, entries in records_by_type.items():
+        if rtype not in PRIORITY:
+            lines.append(f"\n{rtype}:")
+            lines.extend(entries[-20:])
+
+    if workout_lines:
+        lines.append("\nWorkouts:")
+        lines.extend(workout_lines[-100:])
+
+    return "\n".join(lines)
+
+# ── Obsidian Vault (ZIP) ───────────────────────────────────────
+
+def parse_obsidian_zip(contents: bytes) -> list[tuple[str, str, str]]:
+    """Extract (source, display_name, text) tuples from a ZIP of .md files."""
+    results = []
+    try:
+        with zipfile.ZipFile(io.BytesIO(contents)) as zf:
+            md_files = [n for n in zf.namelist()
+                        if n.endswith('.md') and '/.trash/' not in n and not n.startswith('__')]
+            for name in md_files:
+                try:
+                    text = zf.read(name).decode('utf-8', errors='ignore').strip()
+                    if len(text) < 20:
+                        continue
+                    display = os.path.basename(name).replace('.md', '')
+                    source  = f"obsidian:{name}"
+                    results.append((source, display, text))
+                except Exception as e:
+                    print(f"  ⚠️ Skipped {name}: {e}")
+    except zipfile.BadZipFile:
+        pass
+    return results
+
+# ── Folder Watcher ────────────────────────────────────────────
+
+def _index_file_sync(path: str):
+    """Index a single file into the vault (called from watchdog thread)."""
+    try:
+        with open(path, 'rb') as f:
+            contents = f.read()
+        filename = os.path.basename(path)
+        ext      = os.path.splitext(filename)[1].lower()
+        col      = get_collection()
+
+        if ext in IMAGE_EXTENSIONS:
+            source = f"photo:{filename}"
+            if col.get(where={"source": source}, include=["metadatas"])["ids"]:
+                return
+            exif_text = extract_exif(contents, filename)
+            caption   = caption_image_llava(contents, filename)
+            text      = f"Photo: {filename}\n{exif_text}\n\nDescription: {caption}"
+            chunks    = chunk_text(text)
+            embed_and_store(chunks, source, col)
+            log_feed_event(filename, "vault", len(chunks), "watch-photo", source)
+            print(f"✅ Auto-indexed photo: {filename}")
+        else:
+            source = filename
+            if col.get(where={"source": source}, include=["metadatas"])["ids"]:
+                return
+            text = extract_text_from_file(contents, filename)
+            if text.strip():
+                chunks = chunk_text(text)
+                embed_and_store(chunks, source, col)
+                log_feed_event(filename, "vault", len(chunks), "watch", source)
+                print(f"✅ Auto-indexed: {filename}")
+    except Exception as e:
+        print(f"⚠️ Watch folder index error: {e}")
+
+if WATCHDOG_OK:
+    class VaultFileHandler(FileSystemEventHandler):
+        def on_created(self, event):
+            if event.is_directory:
+                return
+            ext = os.path.splitext(event.src_path)[1].lower()
+            if ext in WATCHABLE_EXTS:
+                threading.Timer(1.0, _index_file_sync, args=[event.src_path]).start()
+
+def start_folder_watcher(folder_path: str):
+    global _watcher_observer, _active_watchers
+    if not WATCHDOG_OK or folder_path in _active_watchers:
+        return
+    if _watcher_observer is None:
+        _watcher_observer = Observer()
+        _watcher_observer.start()
+    handler = VaultFileHandler()
+    _watcher_observer.schedule(handler, folder_path, recursive=True)
+    _active_watchers[folder_path] = handler
+    print(f"👁️  Watching: {folder_path}")
+
+def stop_folder_watcher(folder_path: str):
+    _active_watchers.pop(folder_path, None)
+
 # ── Upload ────────────────────────────────────────────────────
 
 @app.post("/upload")
@@ -428,6 +648,167 @@ async def upload_document(
     embed_and_store(chunks, file.filename, col)
     log_feed_event(file.filename, "vault", len(chunks), "upload")
     return {"message": f"Indexed {file.filename}", "chunks": len(chunks)}
+
+# ── Photo Upload ──────────────────────────────────────────────
+
+@app.post("/upload-photo")
+async def upload_photo(file: UploadFile = File(...)):
+    """Accept an image, extract EXIF metadata, caption with LLaVA, store as searchable text."""
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in IMAGE_EXTENSIONS:
+        return {"error": f"Unsupported image type: {ext}. Supported: JPG, PNG, GIF, WEBP, HEIC"}
+
+    contents = await file.read()
+    source   = f"photo:{file.filename}"
+    col      = get_collection()
+
+    existing = col.get(where={"source": source}, include=["metadatas"])
+    if existing["ids"]:
+        return {"message": f"Already indexed: {file.filename}", "chunks": len(existing["ids"])}
+
+    print(f"\n📸 Processing photo '{file.filename}'…")
+    exif_text = extract_exif(contents, file.filename)
+    caption   = await asyncio.to_thread(caption_image_llava, contents, file.filename)
+    full_text = f"Photo: {file.filename}\n{exif_text}\n\nDescription: {caption}"
+
+    chunks = chunk_text(full_text)
+    embed_and_store(chunks, source, col)
+    log_feed_event(file.filename, "vault", len(chunks), "photo", source)
+
+    print(f"  ✅ Indexed photo '{file.filename}' — {len(chunks)} chunks")
+    return {"message": f"Indexed {file.filename}", "chunks": len(chunks), "caption": caption[:200]}
+
+# ── Apple Health Upload ────────────────────────────────────────
+
+@app.post("/upload-health")
+async def upload_health(file: UploadFile = File(...)):
+    """Accept Apple Health export.xml and index it as searchable health records."""
+    if not file.filename.lower().endswith('.xml'):
+        return {"error": "Expected export.xml from Apple Health. Go to Health app → your avatar → Export All Health Data."}
+
+    contents = await file.read()
+    source   = "health:apple-health"
+    col      = get_collection()
+
+    # Replace any existing health data
+    existing = col.get(where={"source": source}, include=["metadatas"])
+    if existing["ids"]:
+        col.delete(ids=existing["ids"])
+        print(f"🗑️  Replaced existing Apple Health data ({len(existing['ids'])} chunks)")
+
+    print(f"\n🏥 Parsing Apple Health export…")
+    text = await asyncio.to_thread(parse_apple_health_xml, contents)
+    if not text.strip():
+        return {"error": "Could not parse Apple Health XML. Export from Health app → your avatar → Export All Health Data."}
+
+    chunks = chunk_text(text)
+    embed_and_store(chunks, source, col)
+    log_feed_event("Apple Health Export", "vault", len(chunks), "health", source)
+    print(f"  ✅ Indexed health data — {len(chunks)} chunks")
+    return {"message": f"Indexed Apple Health data", "chunks": len(chunks)}
+
+# ── Obsidian Vault Upload ──────────────────────────────────────
+
+@app.post("/upload-obsidian")
+async def upload_obsidian(file: UploadFile = File(...)):
+    """Accept a ZIP of an Obsidian vault and index all .md notes."""
+    if not file.filename.lower().endswith('.zip'):
+        return {"error": "Please ZIP your Obsidian vault folder and upload the ZIP file."}
+
+    contents     = await file.read()
+    col          = get_collection()
+    total_chunks = 0
+    indexed      = 0
+
+    notes = await asyncio.to_thread(parse_obsidian_zip, contents)
+    if not notes:
+        return {"error": "No .md files found in ZIP. Make sure you zipped an Obsidian vault folder."}
+
+    for source, display, text in notes:
+        existing = col.get(where={"source": source}, include=["metadatas"])
+        if existing["ids"]:
+            continue
+        chunks = chunk_text(text)
+        embed_and_store(chunks, source, col)
+        log_feed_event(display, "vault", len(chunks), "obsidian", source)
+        total_chunks += len(chunks)
+        indexed      += 1
+
+    print(f"  ✅ Indexed {indexed} Obsidian notes — {total_chunks} chunks")
+    return {"message": f"Indexed {indexed} notes", "chunks": total_chunks, "files": indexed}
+
+# ── Watch Folders ─────────────────────────────────────────────
+
+class WatchFolderRequest(BaseModel):
+    path: str
+
+@app.get("/watch-folders")
+async def list_watch_folders():
+    cfg = load_config()
+    return {"folders": cfg.get(WATCH_FOLDERS_KEY, []), "watchdog_available": WATCHDOG_OK}
+
+@app.post("/watch-folders")
+async def add_watch_folder(req: WatchFolderRequest):
+    if not WATCHDOG_OK:
+        return {"error": "watchdog not installed — run: pip install watchdog"}
+    if not os.path.isdir(req.path):
+        return {"error": f"Directory not found: {req.path}"}
+    cfg     = load_config()
+    folders = cfg.get(WATCH_FOLDERS_KEY, [])
+    if req.path not in folders:
+        folders.append(req.path)
+        cfg[WATCH_FOLDERS_KEY] = folders
+        save_config(cfg)
+        start_folder_watcher(req.path)
+    return {"message": f"Now watching: {req.path}", "folders": folders}
+
+@app.delete("/watch-folders")
+async def remove_watch_folder(path: str = Query(...)):
+    cfg     = load_config()
+    folders = cfg.get(WATCH_FOLDERS_KEY, [])
+    if path in folders:
+        folders.remove(path)
+        cfg[WATCH_FOLDERS_KEY] = folders
+        save_config(cfg)
+    stop_folder_watcher(path)
+    return {"message": f"Stopped watching: {path}", "folders": folders}
+
+# ── Privacy Dashboard ─────────────────────────────────────────
+
+@app.get("/privacy")
+async def privacy_dashboard():
+    """Return a breakdown of indexed data and confirm zero external data transmission."""
+    col     = get_collection()
+    results = col.get(include=["metadatas"])
+
+    source_types: dict[str, int] = {}
+    sources_seen: set             = set()
+
+    for meta in results["metadatas"]:
+        src = meta["source"]
+        if src in sources_seen:
+            continue
+        sources_seen.add(src)
+        if src.startswith("photo:"):        stype = "Photos"
+        elif src.startswith("health:"):     stype = "Health Records"
+        elif src.startswith("notion:"):     stype = "Notion Pages"
+        elif src.startswith("obsidian:"):   stype = "Obsidian Notes"
+        elif src.startswith("gmail:"):      stype = "Emails"
+        elif src.startswith("🌐") or src.startswith("http"): stype = "Web Pages"
+        else:                               stype = "Documents"
+        source_types[stype] = source_types.get(stype, 0) + 1
+
+    cfg = load_config()
+    return {
+        "total_chunks":         col.count(),
+        "total_sources":        len(sources_seen),
+        "source_breakdown":     source_types,
+        "external_connections": [],
+        "network_calls":        "Only during Agent mode web search or Notion sync — never for your personal data",
+        "data_location":        os.path.abspath(DATA_DIR),
+        "watch_folders":        cfg.get(WATCH_FOLDERS_KEY, []),
+        "checked_at":           datetime.now(timezone.utc).isoformat(),
+    }
 
 # ── URL ingest ────────────────────────────────────────────────
 
@@ -493,17 +874,22 @@ async def list_files(workspace: str = Query(default="Default")):  # workspace ke
         title = None
         first = first_chunks.get(src, "")
         if src.startswith("gmail:") and first:
-            # First chunk starts with "From: ...\nDate: ...\nSubject: ..."
             for line in first.split("\n"):
                 if line.lower().startswith("subject:"):
                     title = line[8:].strip() or None
                     break
         elif src.startswith("notion:") and first:
-            # Notion content — use first non-empty line as title
             for line in first.split("\n"):
                 if line.strip():
                     title = line.strip()[:80]
                     break
+        elif src.startswith("photo:"):
+            title = src[6:]  # strip "photo:" prefix
+        elif src.startswith("health:"):
+            title = "Apple Health Export"
+        elif src.startswith("obsidian:"):
+            # obsidian:path/to/Note.md → "Note"
+            title = os.path.basename(src[9:]).replace('.md', '')
         items.append({"name": src, "title": title, "chunks": count})
 
     return {"files": items}

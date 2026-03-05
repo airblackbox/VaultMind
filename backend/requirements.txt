@@ -9,6 +9,8 @@ requests
 ddgs
 ollama
 python-multipart
+Pillow
+watchdog
 google-auth
 google-auth-oauthlib
 google-auth-httplib2

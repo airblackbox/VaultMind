@@ -252,6 +252,7 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
     <div class="live-dot"></div>
     <span class="stext">Connecting...</span>
   </div>
+  <button class="gear-btn" id="privacy-btn" title="Privacy Dashboard" style="font-size:13px;padding:5px 8px">🔒 Privacy</button>
   <button class="gear-btn" id="gear-btn" title="Connectors &amp; Settings">⚙️</button>
 </header>
 
@@ -263,8 +264,8 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
 
   <!-- Sidebar -->
   <div class="sidebar">
-    <div class="upload-zone" id="zone" style="margin-top:14px"><div class="ico">📂</div><p><strong>Drop files here</strong><br>PDF · Word · TXT · MD · CSV</p></div>
-    <input type="file" id="file-input" accept=".pdf,.docx,.txt,.md,.csv" multiple>
+    <div class="upload-zone" id="zone" style="margin-top:14px"><div class="ico">📂</div><p><strong>Drop files or photos here</strong><br>PDF · Word · TXT · MD · CSV · JPG · PNG</p></div>
+    <input type="file" id="file-input" accept=".pdf,.docx,.txt,.md,.csv,.jpg,.jpeg,.png,.gif,.webp,.heic,.tiff,.xml,.zip" multiple>
     <div class="url-zone">
       <input id="url-input" type="url" placeholder="Paste a URL to index…">
       <button id="url-btn">Add</button>
@@ -288,6 +289,21 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
       <div id="notion-section" style="display:none">
         <div class="section-header"><span class="section-label">Notion Pages</span><span class="section-count" id="notion-count">0</span></div>
         <div id="notion-list"></div>
+      </div>
+      <div class="section-divider" id="photos-divider" style="display:none"></div>
+      <div id="photos-section" style="display:none">
+        <div class="section-header"><span class="section-label">Photos</span><span class="section-count" id="photos-count">0</span></div>
+        <div id="photos-list"></div>
+      </div>
+      <div class="section-divider" id="health-divider" style="display:none"></div>
+      <div id="health-section" style="display:none">
+        <div class="section-header"><span class="section-label">Health Records</span><span class="section-count" id="health-count">0</span></div>
+        <div id="health-list"></div>
+      </div>
+      <div class="section-divider" id="obsidian-divider" style="display:none"></div>
+      <div id="obsidian-section" style="display:none">
+        <div class="section-header"><span class="section-label">Obsidian Notes</span><span class="section-count" id="obsidian-count">0</span></div>
+        <div id="obsidian-list"></div>
       </div>
     </div>
     <div class="sidebar-footer">
@@ -410,6 +426,30 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
 
       <div class="modal-divider"></div>
 
+      <!-- Watch Folders -->
+      <div class="connector-section">
+        <div class="connector-head">
+          <div class="connector-name">
+            <span class="connector-icon">👁️</span>
+            <div><div class="connector-label">Watch Folders</div><div class="connector-sub">Auto-index files dropped into a folder</div></div>
+          </div>
+        </div>
+        <div class="connector-fields">
+          <div class="field-row">
+            <label class="field-label">Folder Path</label>
+            <input class="field-input" type="text" id="watch-path" placeholder="/Users/you/Documents/VaultDropbox">
+            <span class="field-hint">Any file added to this folder is automatically indexed. Works with photos too.</span>
+          </div>
+          <div class="connector-actions">
+            <button class="btn-save" onclick="addWatchFolder()">+ Watch Folder</button>
+          </div>
+          <div id="watch-folder-list" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
+          <div class="sync-status" id="watch-status"></div>
+        </div>
+      </div>
+
+      <div class="modal-divider"></div>
+
       <!-- Coming soon -->
       <div style="margin-bottom:10px">
         <div class="field-label" style="margin-bottom:12px">Coming Soon</div>
@@ -429,20 +469,36 @@ header{padding:14px 24px;border-bottom:1px solid #1e1e1e;display:flex;align-item
   </div>
 </div>
 
+<!-- Privacy Modal -->
+<div class="modal-overlay hidden" id="privacy-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>🔒 Privacy Dashboard</h2>
+      <button class="modal-close" onclick="closePrivacy()">✕</button>
+    </div>
+    <div class="modal-body" id="privacy-body">
+      <div style="text-align:center;color:#333;padding:40px 0">Loading…</div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 const API = 'http://localhost:8000';
 
 // ── State ─────────────────────────────────────────────────────
-let currentModel = 'mistral';
-let history      = [];
-let busy         = false;
-let agentMode    = false;
-let docCount     = 0;
-let webCount     = 0;
-let emailCount   = 0;
-let notionCount  = 0;
+let currentModel   = 'mistral';
+let history        = [];
+let busy           = false;
+let agentMode      = false;
+let docCount       = 0;
+let webCount       = 0;
+let emailCount     = 0;
+let notionCount    = 0;
+let photosCount    = 0;
+let healthCount    = 0;
+let obsidianCount  = 0;
 
 // ── DOM ───────────────────────────────────────────────────────
 const sidebar        = document.querySelector('.sidebar');
@@ -479,6 +535,7 @@ function closeSidebarOnMobile() { if (isMobile()) closeSidebar(); }
 document.getElementById('gear-btn').onclick = openSettings;
 function openSettings() {
   loadConnectorConfig();
+  loadWatchFolders();
   document.getElementById('settings-modal').classList.remove('hidden');
 }
 function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
@@ -544,18 +601,31 @@ async function syncNotion() {
 // ── Workspace ─────────────────────────────────────────────────
 function clearFilesList() {
   docCount = 0; webCount = 0; emailCount = 0; notionCount = 0;
-  document.getElementById('docs-count').textContent   = '0';
-  document.getElementById('web-count').textContent    = '0';
-  document.getElementById('emails-count').textContent = '0';
-  document.getElementById('notion-count').textContent = '0';
+  photosCount = 0; healthCount = 0; obsidianCount = 0;
+  document.getElementById('docs-count').textContent     = '0';
+  document.getElementById('web-count').textContent      = '0';
+  document.getElementById('emails-count').textContent   = '0';
+  document.getElementById('notion-count').textContent   = '0';
+  document.getElementById('photos-count').textContent   = '0';
+  document.getElementById('health-count').textContent   = '0';
+  document.getElementById('obsidian-count').textContent = '0';
   document.getElementById('docs-list').innerHTML   = '<div class="section-empty" id="docs-empty">No documents indexed yet</div>';
   document.getElementById('web-list').innerHTML    = '<div class="section-empty" id="web-empty">No URLs indexed yet</div>';
-  document.getElementById('emails-list').innerHTML = '';
-  document.getElementById('notion-list').innerHTML = '';
-  document.getElementById('emails-section').style.display = 'none';
-  document.getElementById('emails-divider').style.display = 'none';
-  document.getElementById('notion-section').style.display = 'none';
-  document.getElementById('notion-divider').style.display = 'none';
+  document.getElementById('emails-list').innerHTML   = '';
+  document.getElementById('notion-list').innerHTML   = '';
+  document.getElementById('photos-list').innerHTML   = '';
+  document.getElementById('health-list').innerHTML   = '';
+  document.getElementById('obsidian-list').innerHTML = '';
+  document.getElementById('emails-section').style.display   = 'none';
+  document.getElementById('emails-divider').style.display   = 'none';
+  document.getElementById('notion-section').style.display   = 'none';
+  document.getElementById('notion-divider').style.display   = 'none';
+  document.getElementById('photos-section').style.display   = 'none';
+  document.getElementById('photos-divider').style.display   = 'none';
+  document.getElementById('health-section').style.display   = 'none';
+  document.getElementById('health-divider').style.display   = 'none';
+  document.getElementById('obsidian-section').style.display = 'none';
+  document.getElementById('obsidian-divider').style.display = 'none';
 }
 
 // ── Model ─────────────────────────────────────────────────────
@@ -628,11 +698,12 @@ async function loadFiles() {
 }
 
 // ── Ingest ────────────────────────────────────────────────────
-const ACCEPTED = ['.pdf','.docx','.txt','.md','.csv'];
+const IMAGE_EXTS  = new Set(['.jpg','.jpeg','.png','.gif','.bmp','.webp','.heic','.tiff','.tif']);
+const ACCEPTED    = ['.pdf','.docx','.txt','.md','.csv','.xml','.zip',...IMAGE_EXTS];
 zoneEl.onclick    = () => fileInp.click();
 zoneEl.ondragover = e => { e.preventDefault(); zoneEl.classList.add('over'); };
 zoneEl.ondragleave= () => zoneEl.classList.remove('over');
-zoneEl.ondrop     = e => { e.preventDefault(); zoneEl.classList.remove('over'); ingest([...e.dataTransfer.files].filter(f => ACCEPTED.some(x => f.name.toLowerCase().endsWith(x)))); };
+zoneEl.ondrop     = e => { e.preventDefault(); zoneEl.classList.remove('over'); ingest([...e.dataTransfer.files]); };
 fileInp.onchange  = () => ingest([...fileInp.files]);
 
 const urlInput = document.getElementById('url-input');
@@ -651,45 +722,82 @@ async function ingestUrl() {
   urlBtn.disabled = false;
 }
 
+function endpointFor(file) {
+  const ext = '.' + file.name.split('.').pop().toLowerCase();
+  if (IMAGE_EXTS.has(ext))  return '/upload-photo';
+  if (ext === '.xml')        return '/upload-health';
+  if (ext === '.zip')        return '/upload-obsidian';
+  return '/upload';
+}
+
 async function ingest(files) {
   for (const f of files) {
     toast(`Indexing ${f.name}…`);
     try {
+      const endpoint = endpointFor(f);
       const fd = new FormData(); fd.append('file', f);
-      const d = await fetch(`${API}/upload`, {method:'POST', body:fd}).then(r => r.json());
+      const d = await fetch(`${API}${endpoint}`, {method:'POST', body:fd}).then(r => r.json());
       if (d.error) throw new Error(d.error);
-      addFileCard(f.name, d.chunks); toast(`✅ ${f.name} — ${d.chunks} chunks`); ping();
+      if (endpoint === '/upload-photo') {
+        // source stored as photo:{filename}
+        addFileCard('photo:' + f.name, d.chunks);
+        toast(`✅ ${f.name} — ${d.chunks} chunks`);
+      } else if (endpoint === '/upload-health') {
+        // source stored as health:apple-health
+        addFileCard('health:apple-health', d.chunks);
+        toast(`✅ Apple Health — ${d.chunks} chunks`);
+      } else if (endpoint === '/upload-obsidian') {
+        // multiple notes indexed — reload sidebar from backend
+        toast(`✅ ${f.name} — ${d.files} notes, ${d.chunks} chunks`);
+        clearFilesList(); loadFiles();
+      } else {
+        addFileCard(f.name, d.chunks);
+        toast(`✅ ${f.name} — ${d.chunks} chunks`);
+      }
+      ping();
     } catch(e) { toast(`❌ ${e.message}`, true); }
   }
 }
 
 // ── File cards ────────────────────────────────────────────────
-function isWebSource(n)    { return n.startsWith('🌐') || n.startsWith('http://') || n.startsWith('https://'); }
-function isEmailSource(n)  { return n.startsWith('gmail:'); }
-function isNotionSource(n) { return n.startsWith('notion:'); }
+function isWebSource(n)      { return n.startsWith('🌐') || n.startsWith('http://') || n.startsWith('https://'); }
+function isEmailSource(n)    { return n.startsWith('gmail:'); }
+function isNotionSource(n)   { return n.startsWith('notion:'); }
+function isPhotoSource(n)    { return n.startsWith('photo:'); }
+function isHealthSource(n)   { return n.startsWith('health:'); }
+function isObsidianSource(n) { return n.startsWith('obsidian:'); }
 
 function fileIcon(n) {
-  if (isEmailSource(n))  return '📧';
-  if (isNotionSource(n)) return '📓';
-  if (isWebSource(n))    return '🌐';
+  if (isEmailSource(n))    return '📧';
+  if (isNotionSource(n))   return '📓';
+  if (isPhotoSource(n))    return '📸';
+  if (isHealthSource(n))   return '🏥';
+  if (isObsidianSource(n)) return '🪨';
+  if (isWebSource(n))      return '🌐';
   const ext = n.split('.').pop()?.toLowerCase();
-  return {pdf:'📄',docx:'📝',txt:'📝',md:'📝',csv:'📊'}[ext] || '📄';
+  return {pdf:'📄',docx:'📝',txt:'📝',md:'📝',csv:'📊',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',webp:'🖼️'}[ext] || '📄';
 }
 
 function friendlyName(n, title) {
   if (title) return title;
-  if (isEmailSource(n))  return 'Email ' + n.slice(-8);
-  if (isNotionSource(n)) return 'Notion page ' + n.slice(-8);
-  if (n.startsWith('🌐')) return n.slice(2).trim();
+  if (isEmailSource(n))    return 'Email ' + n.slice(-8);
+  if (isNotionSource(n))   return 'Notion page ' + n.slice(-8);
+  if (isPhotoSource(n))    return n.slice(6);
+  if (isHealthSource(n))   return 'Apple Health Export';
+  if (isObsidianSource(n)) return n.split('/').pop()?.replace('.md','') || n.slice(9);
+  if (n.startsWith('🌐'))  return n.slice(2).trim();
   try { const u = new URL(n); return u.hostname + (u.pathname !== '/' ? u.pathname : ''); } catch {}
   return n;
 }
 
 // Convert raw source IDs to readable labels for chat attribution
 function sourceLabel(src) {
-  if (isEmailSource(src))  return '📧 Email';
-  if (isNotionSource(src)) return '📓 Notion';
-  if (src.startsWith('🌐')) return '🌐 ' + src.slice(2, 42).trim();
+  if (isEmailSource(src))    return '📧 Email';
+  if (isNotionSource(src))   return '📓 Notion';
+  if (isPhotoSource(src))    return '📸 ' + src.slice(6, 46);
+  if (isHealthSource(src))   return '🏥 Apple Health';
+  if (isObsidianSource(src)) return '🪨 ' + (src.split('/').pop()?.replace('.md','') || 'Note');
+  if (src.startsWith('🌐'))  return '🌐 ' + src.slice(2, 42).trim();
   try { return new URL(src).hostname; } catch {}
   return src.length > 40 ? src.slice(0, 40) + '…' : src;
 }
@@ -697,9 +805,12 @@ function sourceLabel(src) {
 function updateCount(s, c) { document.getElementById(s+'-count').textContent = c; }
 
 function sectionFor(name) {
-  if (isEmailSource(name))  return 'emails';
-  if (isNotionSource(name)) return 'notion';
-  if (isWebSource(name))    return 'web';
+  if (isEmailSource(name))    return 'emails';
+  if (isNotionSource(name))   return 'notion';
+  if (isPhotoSource(name))    return 'photos';
+  if (isHealthSource(name))   return 'health';
+  if (isObsidianSource(name)) return 'obsidian';
+  if (isWebSource(name))      return 'web';
   return 'docs';
 }
 
@@ -722,6 +833,21 @@ function addFileCard(name, chunks, title) {
     updateCount('notion', notionCount);
     document.getElementById('notion-section').style.display = '';
     document.getElementById('notion-divider').style.display = '';
+  } else if (section === 'photos') {
+    photosCount++;
+    updateCount('photos', photosCount);
+    document.getElementById('photos-section').style.display = '';
+    document.getElementById('photos-divider').style.display = '';
+  } else if (section === 'health') {
+    healthCount++;
+    updateCount('health', healthCount);
+    document.getElementById('health-section').style.display = '';
+    document.getElementById('health-divider').style.display = '';
+  } else if (section === 'obsidian') {
+    obsidianCount++;
+    updateCount('obsidian', obsidianCount);
+    document.getElementById('obsidian-section').style.display = '';
+    document.getElementById('obsidian-divider').style.display = '';
   } else if (section === 'web') {
     webCount++; updateCount('web', webCount);
   } else {
@@ -751,6 +877,15 @@ async function deleteFile(enc, safeId, section) {
     } else if (section === 'notion') {
       notionCount = Math.max(0,notionCount-1); updateCount('notion',notionCount);
       if (!notionCount) { document.getElementById('notion-section').style.display='none'; document.getElementById('notion-divider').style.display='none'; }
+    } else if (section === 'photos') {
+      photosCount = Math.max(0,photosCount-1); updateCount('photos',photosCount);
+      if (!photosCount) { document.getElementById('photos-section').style.display='none'; document.getElementById('photos-divider').style.display='none'; }
+    } else if (section === 'health') {
+      healthCount = Math.max(0,healthCount-1); updateCount('health',healthCount);
+      if (!healthCount) { document.getElementById('health-section').style.display='none'; document.getElementById('health-divider').style.display='none'; }
+    } else if (section === 'obsidian') {
+      obsidianCount = Math.max(0,obsidianCount-1); updateCount('obsidian',obsidianCount);
+      if (!obsidianCount) { document.getElementById('obsidian-section').style.display='none'; document.getElementById('obsidian-divider').style.display='none'; }
     } else {
       docCount = Math.max(0,docCount-1); updateCount('docs',docCount);
       if (!docCount) { const e=document.createElement('div'); e.className='section-empty'; e.id='docs-empty'; e.textContent='No documents indexed yet'; document.getElementById('docs-list').appendChild(e); }
@@ -938,6 +1073,102 @@ function stripMarkdown(t) {
 }
 function addUserMsg(t) { const d=document.createElement('div'); d.className='msg-user'; d.textContent=t; msgsEl.appendChild(d); msgsEl.scrollTop=msgsEl.scrollHeight; }
 function toast(msg, err=false) { const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show'+(err?' err':''); setTimeout(()=>t.className='toast',3500); }
+
+// ── Privacy Dashboard ──────────────────────────────────────────
+document.getElementById('privacy-btn').onclick = openPrivacy;
+
+async function openPrivacy() {
+  document.getElementById('privacy-modal').classList.remove('hidden');
+  const body = document.getElementById('privacy-body');
+  body.innerHTML = '<div style="text-align:center;color:#555;padding:40px 0">Loading…</div>';
+  try {
+    const d = await fetch(`${API}/privacy`).then(r => r.json());
+    const rows = Object.entries(d.source_breakdown || {})
+      .sort((a,b) => b[1]-a[1])
+      .map(([src, cnt]) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a1a"><span style="font-size:13px;color:#ccc">${src}</span><span style="font-size:12px;color:#555;background:#1a1a1a;padding:2px 9px;border-radius:10px">${cnt} chunks</span></div>`)
+      .join('');
+    const watchList = (d.watch_folders || [])
+      .map(f => `<div style="font-size:12px;color:#666;padding:4px 0">👁️ ${f}</div>`)
+      .join('') || '<div style="font-size:12px;color:#333;font-style:italic">No folders watched</div>';
+    body.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+        <div style="background:#141414;border:1px solid #1e1e1e;border-radius:10px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:700;color:#6366f1">${d.total_chunks || 0}</div>
+          <div style="font-size:11px;color:#555;margin-top:4px">Total chunks indexed</div>
+        </div>
+        <div style="background:#141414;border:1px solid #1e1e1e;border-radius:10px;padding:16px;text-align:center">
+          <div style="font-size:28px;font-weight:700;color:#22c55e">🔒</div>
+          <div style="font-size:11px;color:#555;margin-top:4px">100% local — never uploaded</div>
+        </div>
+      </div>
+      <div style="background:#141414;border:1px solid #1e1e1e;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:600;color:#3a3a3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Data Location</div>
+        <div style="font-size:12px;color:#666;font-family:monospace;background:#0f0f0f;padding:8px 10px;border-radius:6px">${d.data_location || '~/.vaultmind/chroma'}</div>
+      </div>
+      <div style="background:#141414;border:1px solid #1e1e1e;border-radius:10px;padding:14px;margin-bottom:16px">
+        <div style="font-size:10px;font-weight:600;color:#3a3a3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Source Breakdown</div>
+        ${rows || '<div style="font-size:12px;color:#333;font-style:italic">Nothing indexed yet</div>'}
+      </div>
+      <div style="background:#141414;border:1px solid #1e1e1e;border-radius:10px;padding:14px">
+        <div style="font-size:10px;font-weight:600;color:#3a3a3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Watched Folders</div>
+        ${watchList}
+      </div>`;
+  } catch {
+    body.innerHTML = '<div style="text-align:center;color:#ef4444;padding:40px 0">Could not load privacy data — is VaultMind running?</div>';
+  }
+}
+
+function closePrivacy() {
+  document.getElementById('privacy-modal').classList.add('hidden');
+}
+document.getElementById('privacy-modal').addEventListener('click', e => {
+  if (e.target === document.getElementById('privacy-modal')) closePrivacy();
+});
+
+// ── Watch Folders ──────────────────────────────────────────────
+async function addWatchFolder() {
+  const pathEl = document.getElementById('watch-path');
+  const sts    = document.getElementById('watch-status');
+  const path   = pathEl.value.trim();
+  if (!path) { toast('❌ Enter a folder path', true); return; }
+  sts.textContent = '⏳ Adding…';
+  try {
+    const d = await fetch(`${API}/watch-folders`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({path})
+    }).then(r => r.json());
+    if (d.error) throw new Error(d.error);
+    pathEl.value = '';
+    sts.textContent = `✅ Watching: ${path}`;
+    toast(`👁️ Watching ${path}`);
+    loadWatchFolders();
+  } catch(e) { sts.textContent = `❌ ${e.message}`; toast(`❌ ${e.message}`, true); }
+}
+
+async function removeWatchFolder(path) {
+  if (!confirm(`Stop watching "${path}"?`)) return;
+  try {
+    await fetch(`${API}/watch-folders?path=${encodeURIComponent(path)}`, {method:'DELETE'});
+    toast(`🗑️ Stopped watching ${path}`);
+    loadWatchFolders();
+  } catch(e) { toast(`❌ ${e.message}`, true); }
+}
+
+async function loadWatchFolders() {
+  try {
+    const d = await fetch(`${API}/watch-folders`).then(r => r.json());
+    const list = document.getElementById('watch-folder-list');
+    list.innerHTML = '';
+    (d.folders || []).forEach(f => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 10px;background:#141414;border:1px solid #1e1e1e;border-radius:8px';
+      row.innerHTML = `<span style="font-size:11px;color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f}">👁️ ${f}</span><button style="background:none;border:none;color:#333;cursor:pointer;font-size:14px;flex-shrink:0" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#333'" onclick="removeWatchFolder('${f.replace(/'/g,"\\'")}')">×</button>`;
+      list.appendChild(row);
+    });
+  } catch {}
+}
+
+// Watch folders load on settings open (wired into openSettings above)
 </script>
 </body>
 </html>
