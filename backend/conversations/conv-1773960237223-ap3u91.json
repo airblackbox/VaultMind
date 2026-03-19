@@ -1,0 +1,24 @@
+{
+  "id": "conv-1773960237223-ap3u91",
+  "title": "What was Jason Shotwell's Q3 2018 performance rating and wha",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What was Jason Shotwell's Q3 2018 performance rating and what did his manager say?"
+    },
+    {
+      "role": "assistant",
+      "content": " Based on the provided documents, there is no information about Jason Shotwell's Q3 2018 performance rating or any comments from his manager. The documents only contain information up to Q2 2018. Therefore, I cannot provide an answer for this question as the requested information is not available in the indexed documents."
+    },
+    {
+      "role": "user",
+      "content": "What was Jason Shotwell's Q3 2018 performance rating and what did his manager say?"
+    },
+    {
+      "role": "assistant",
+      "content": "Based on the provided documents, there is no information about Jason Shotwell's Q3 2018 performance rating or any comments from his manager. The documents only contain information up to Q2 2018. Therefore, I cannot provide an answer for this question as the requested information is not available in the indexed documents."
+    }
+  ],
+  "model": "qwen2.5",
+  "skill": ""
+}

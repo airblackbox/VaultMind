@@ -1,0 +1,24 @@
+{
+  "id": "conv-1773956691090-jm08y6",
+  "title": "review 2018 Q3 documents what was the comp",
+  "messages": [
+    {
+      "role": "user",
+      "content": "review 2018 Q3 documents what was the comp"
+    },
+    {
+      "role": "assistant",
+      "content": " Based on the indexed documents, I cannot find specific information about the computer's performance in Q3 of 2018. The provided documents do not contain such details."
+    },
+    {
+      "role": "user",
+      "content": "what was jason shotwells performance year-end"
+    },
+    {
+      "role": "assistant",
+      "content": " Based on the indexed documents, I cannot find specific information about Jason Shotwell's year-end performance in 2018. The provided documents do not contain such details."
+    }
+  ],
+  "model": "mistral",
+  "skill": ""
+}

@@ -1,0 +1,24 @@
+{
+  "id": "conv-1773956337489-mpw9m0",
+  "title": "review all of jason shotwell's documents and tell me if this",
+  "messages": [
+    {
+      "role": "user",
+      "content": "review all of jason shotwell's documents and tell me if this person's performance was meeting expectations?"
+    },
+    {
+      "role": "assistant",
+      "content": " 1. Title: Career Opportunity at Marketing Operations\n   Company: Marketing Operations\n   Location: Not specified (Based on the source URL)\n   Apply URL: https://nanoglobals.com/career/---FROM THE WEB\n\n2. Title: Performance Review Reference Guide #2: Example Feedback Comments\n   Company: Texas A&M University-Commerce Human Resources\n   Location: Career (Based on the source URL)\n   Apply URL: Not applicable (This is a reference guide, not a job listing)\n\n3. Title: Jason Shotwell's Profile\n   Company: Not specified (Based on the source URL, this is an online people search service)\n   Location: Not specified (Based on the source URL)\n   Apply URL: https://www.instantcheckmate.com/people/jason-shotwell/\n\n4. Title: Understanding \"Meets Expectations\" in a Work Setting - Quora\n   Company: Quora Community Member\n   Location: Not specified (Based on the source URL)\n   Apply URL: Not applicable (This is a question and answer forum, not a job listing)\n\n5. Title: Fixing Performance Review Cycles That 'Not Meeting Expectations' - Forbes\n   Company: Forbes Human Resources Council\n   Location: Not specified (Based on the source URL)\n   Apply URL: https://www.forbes.com/councils/forbeshumanresourcescouncil/2023/12/12/performance-review-cycles-not-meeting-expectations-heres-how-to-fix-it/\n\n6. Title: Is \"Meets Expectations\" Good or Bad on a Performance Review? - NanoGlobals\n   Company: NanoGlobals\n   Location: Not specified (Based on the source URL)\n   Apply URL: https://nanoglobals.com/meets-expectations-performance-review/"
+    },
+    {
+      "role": "user",
+      "content": "did jason shotwell meet expectations through their career at meta?"
+    },
+    {
+      "role": "assistant",
+      "content": "I couldn't find any specific documents or structured job listings related to Jason Shotwell's performance at Meta. However, based on the available information and structured job listings provided, I can offer a general analysis:\n\n1. **Title: Metabase Jobs**\n   - Company: Metabase\n   - Apply URL: https://jobs.lever.co/metabase\n\n2. **Title: Metaview: The All-In-One People Platform | Lever Marketplace**\n   - Company: Meta (Lever)\n   - Apply URL: https://marketplace.lever.co/providers/metaview/\n\nGiven that these URLs are related to Meta and its recruitment tools, they do not provide specific performance reviews for Jason Shotwell. To determine if Jason Shotwell met expectations at Meta, we would need access to his actual performance review documents or other structured data from Meta's HR system.\n\nIf you have any specific URLs or additional information about Jason Shotwell's performance at Meta, please share them so I can provide a more accurate analysis."
+    }
+  ],
+  "model": "qwen2.5",
+  "skill": ""
+}
