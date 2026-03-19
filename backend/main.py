@@ -23,6 +23,12 @@ from ddgs import DDGS
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from company_intel import analyze_agency_listings
+from router import route_file, route_query, RouteType, IMAGE_EXTENSIONS
+from vlm import extract_pdf_with_vlm, extract_image_with_vlm, get_available_vlm, vlm_available
+from lam import (
+    run_lam_agent, load_staged, approve_staged_action,
+    reject_staged_action, AUDIT_DIR
+)
 
 # Optional Pillow for EXIF
 try:
@@ -408,6 +414,81 @@ def get_collection():
 
 # ── Models API ────────────────────────────────────────────────
 
+@app.get("/vlm-status")
+async def vlm_status():
+    """Returns which VLM model is available and whether VLM processing is ready."""
+    model = get_available_vlm()
+    return {
+        "vlm_available": model is not None,
+        "vlm_model": model,
+        "install_hint": "ollama pull qwen2.5vl:7b" if not model else None,
+    }
+
+# ── LAM Agent Endpoints ───────────────────────────────────────
+
+class AgentRequest(BaseModel):
+    query:     str
+    matter_id: str = ""
+    model:     str = ""
+
+@app.post("/agent")
+async def agent_endpoint(req: AgentRequest):
+    """
+    LAM agent mode: plan and execute multi-step actions.
+    Auto-executes low-risk tools, stages high-risk ones for review.
+    """
+    # First do RAG to get context
+    col = get_collection()
+    try:
+        embedding = ollama.embeddings(model=EMBED_MODEL, prompt=req.query)["embedding"]
+        results = col.query(query_embeddings=[embedding], n_results=5)
+        chunks = results["documents"][0] if results["documents"] else []
+    except Exception:
+        chunks = []
+
+    result = await asyncio.to_thread(
+        run_lam_agent, req.query, chunks, req.matter_id, req.model or None
+    )
+    return result
+
+@app.get("/staged-actions")
+async def list_staged():
+    """Return all pending staged actions awaiting attorney approval."""
+    actions = load_staged()
+    pending = [a for a in actions if a["status"] == "pending"]
+    return {"staged": pending, "count": len(pending)}
+
+class ActionDecision(BaseModel):
+    action_id: str
+
+@app.post("/staged-actions/{action_id}/approve")
+async def approve_action(action_id: str):
+    result = await asyncio.to_thread(approve_staged_action, action_id)
+    return result
+
+@app.post("/staged-actions/{action_id}/reject")
+async def reject_action(action_id: str):
+    result = await asyncio.to_thread(reject_staged_action, action_id)
+    return result
+
+@app.get("/audit-log")
+async def get_audit_log(limit: int = Query(default=50)):
+    """Return recent LAM audit records."""
+    import glob
+    audit_files = sorted(
+        glob.glob(os.path.join(AUDIT_DIR, "*.json")),
+        key=os.path.getmtime,
+        reverse=True
+    )[:limit]
+    records = []
+    for f in audit_files:
+        try:
+            with open(f) as fp:
+                records.append(json.load(fp))
+        except Exception:
+            pass
+    return {"records": records, "total": len(audit_files)}
+
 @app.get("/models")
 async def list_models():
     try:
@@ -582,15 +663,35 @@ def parse_obsidian_zip(contents: bytes) -> list[tuple[str, str, str]]:
 # ── Folder Watcher ────────────────────────────────────────────
 
 def _index_file_sync(path: str):
-    """Index a single file into the vault (called from watchdog thread)."""
+    """Index a single file into the vault using the model router (called from watchdog thread)."""
     try:
         with open(path, 'rb') as f:
             contents = f.read()
         filename = os.path.basename(path)
         ext      = os.path.splitext(filename)[1].lower()
         col      = get_collection()
+        route    = route_file(filename, contents)
 
-        if ext in IMAGE_EXTENSIONS:
+        if route == RouteType.VLM:
+            # Vision pipeline
+            vlm_model = get_available_vlm()
+            if not vlm_model:
+                print(f"⚠️  No VLM available for {filename} — skipping vision processing")
+                return
+            source = f"vlm:{filename}"
+            if col.get(where={"source": source}, include=["metadatas"])["ids"]:
+                return
+            print(f"🔭 Watch folder VLM: {filename} → {vlm_model}")
+            if ext == ".pdf":
+                text = extract_pdf_with_vlm(contents, filename)
+            else:
+                text = extract_image_with_vlm(contents, filename)
+            if text.strip():
+                chunks = chunk_text(text)
+                embed_and_store(chunks, source, col)
+                log_feed_event(filename, "vault", len(chunks), "watch-vlm", source)
+                print(f"✅ Auto-indexed via VLM: {filename}")
+        elif ext in IMAGE_EXTENSIONS:
             source = f"photo:{filename}"
             if col.get(where={"source": source}, include=["metadatas"])["ids"]:
                 return
@@ -643,18 +744,69 @@ def stop_folder_watcher(folder_path: str):
 @app.post("/upload")
 async def upload_document(
     file:      UploadFile = File(...),
-    workspace: str        = Form(default="Default")   # kept for compat, ignored
+    workspace: str        = Form(default="Default"),
+    doc_type:  str        = Form(default="general"),   # "legal" triggers legal VLM prompt
 ):
     contents = await file.read()
-    text     = extract_text_from_file(contents, file.filename)
-    if not text.strip():
-        return {"error": f"Could not extract text from '{file.filename}'. Supported: PDF, DOCX, TXT, MD, CSV"}
-    chunks = chunk_text(text)
-    print(f"\n📄 Indexing '{file.filename}' — {len(chunks)} chunks")
-    col = get_collection()
-    embed_and_store(chunks, file.filename, col)
-    log_feed_event(file.filename, "vault", len(chunks), "upload")
-    return {"message": f"Indexed {file.filename}", "chunks": len(chunks)}
+    ext      = os.path.splitext(file.filename)[1].lower()
+
+    # ── Route to correct pipeline ──────────────────────────────
+    route = route_file(file.filename, contents)
+
+    if route == RouteType.VLM:
+        # Vision pipeline — scanned PDF or image
+        vlm_model = get_available_vlm()
+        if not vlm_model:
+            return {
+                "error": (
+                    "No VLM model available for this file type. "
+                    "Run: ollama pull qwen2.5vl:7b\n"
+                    "Then restart VaultMind."
+                )
+            }
+
+        print(f"\n🔭 VLM pipeline: '{file.filename}' → {vlm_model}")
+
+        if ext == ".pdf":
+            text = await asyncio.to_thread(
+                extract_pdf_with_vlm, contents, file.filename, doc_type
+            )
+        else:
+            text = await asyncio.to_thread(
+                extract_image_with_vlm, contents, file.filename, doc_type
+            )
+
+        if not text.strip() or "[VLM processing failed" in text:
+            return {"error": f"VLM could not extract content from '{file.filename}'."}
+
+        chunks = chunk_text(text)
+        source = f"vlm:{file.filename}"
+        print(f"📄 Indexing VLM output '{file.filename}' — {len(chunks)} chunks")
+        col = get_collection()
+        embed_and_store(chunks, source, col)
+        log_feed_event(file.filename, "vault", len(chunks), "vlm-upload")
+        return {
+            "message": f"Indexed {file.filename} via VLM",
+            "chunks": len(chunks),
+            "pipeline": "vlm",
+            "model": vlm_model,
+        }
+
+    else:
+        # Text pipeline — standard extraction
+        text = extract_text_from_file(contents, file.filename)
+        if not text.strip():
+            return {"error": f"Could not extract text from '{file.filename}'. Supported: PDF, DOCX, TXT, MD, CSV"}
+        chunks = chunk_text(text)
+        print(f"\n📄 Indexing '{file.filename}' — {len(chunks)} chunks")
+        col = get_collection()
+        embed_and_store(chunks, file.filename, col)
+        log_feed_event(file.filename, "vault", len(chunks), "upload")
+        return {
+            "message": f"Indexed {file.filename}",
+            "chunks": len(chunks),
+            "pipeline": "slm",
+        }
 
 # ── Photo Upload ──────────────────────────────────────────────
 
